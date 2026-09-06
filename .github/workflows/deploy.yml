@@ -1,0 +1,70 @@
+# Publish the web app to GitHub Pages on every push to the default branch.
+#
+# The pipeline does not run here. It needs API quota, several gigabytes of
+# rasters and the better part of a day, none of which belongs in CI. What is
+# committed is its output: web/public/data/towns.json.gz, regenerated locally
+# with `python pipeline/emit.py` whenever the data changes.
+name: Deploy web app
+
+on:
+  push:
+    branches: [main, master]
+  # So it can also be published without pushing anything.
+  workflow_dispatch:
+
+# Read the repo, write a Pages deployment, and prove the deployment came from
+# this workflow. Nothing wider than that.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Let a running deploy finish rather than cancelling it half way.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - run: npm ci
+
+      # Typecheck and tests gate the deploy: a broken build should not replace
+      # a working site.
+      - run: npx tsc --noEmit
+      - run: npx vitest run
+
+      - run: npm run build
+
+      # Fail loudly rather than publishing a site whose data never arrived.
+      - name: Check the dataset made it into the build
+        run: |
+          test -f dist/data/towns.json.gz \
+            || { echo "dist/data/towns.json.gz is missing"; exit 1; }
+          echo "dataset: $(du -h dist/data/towns.json.gz | cut -f1)"
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
