@@ -30,34 +30,13 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import common as c  # noqa: E402
+import boxes  # noqa: E402
 
-# Iberia, including the Canaries (lon -18.2) and the Balearics (lon 4.4).
-ES_BBOX = "35.0,-19.0,44.5,5.0"
-# North Cape to the Canaries, Iceland to Cyprus.
-EU_BBOX = "34.0,-26.0,72.0,35.0"
-# Two more boxes for the Asian countries where you can actually buy. Split
-# rather than one huge box because Overpass does not finish the combined query,
-# and skipping India and southeast Asia keeps it to what is actionable.
-ASIA_BBOXES = {
-    "asia_caucasus": "35.0,25.0,46.0,52.0",   # Turkey, Georgia, Armenia, Azerbaijan
-    "asia_east": "24.0,100.0,46.0,146.5",     # Japan, Korea, Taiwan, east China
-    "asia_central": "40.0,52.0,56.0,88.0",    # Kazakhstan, Kyrgyzstan, Uzbekistan
-}
+ES_BBOX = boxes.ES
+EU_BBOX = boxes.EU
+ASIA_BBOXES = boxes.ASIA
 
-# The rest of the world, for rail only. Stations are a far smaller layer than
-# shops or schools, so there is no reason to stop at Europe and Asia the way
-# those have to. Boxes are per continent because a planet-wide Overpass query
-# does not return, and the wide ones are split again.
-RAIL_BBOXES = {
-    "rail_na_west": "14.0,-170.0,72.0,-100.0",   # Alaska, western Canada and US, west Mexico
-    "rail_na_east": "7.0,-100.0,60.0,-52.0",     # eastern North America, Central America
-    "rail_sa_north": "-20.0,-82.0,13.0,-34.0",   # Colombia to central Brazil
-    "rail_sa_south": "-56.0,-77.0,-20.0,-34.0",  # Chile, Argentina, Uruguay, south Brazil
-    "rail_caribbean": "10.0,-85.0,27.0,-59.0",   # the islands
-    "rail_africa_n": "8.0,-18.0,38.0,52.0",      # Morocco across to the Horn
-    "rail_africa_s": "-35.0,10.0,8.0,52.0",      # southern and eastern Africa
-    "rail_oceania": "-48.0,112.0,-9.0,179.0",    # Australia and New Zealand
-}
+RAIL_BBOXES = boxes.WORLD
 
 ROAD_FACTOR = 1.25
 

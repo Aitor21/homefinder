@@ -666,11 +666,12 @@ measured and 4,210 modelled.
 | Climate | WorldClim 2.1 recalibrated on ERA5 via Open-Meteo | worldwide, 295 anchors across 9 regions |
 | Terrain, coast, relief | WorldClim elevation raster | worldwide, coast from its land mask |
 | Airports | OurAirports + published traffic for 499 airports | worldwide |
-| Air quality | CAMS reanalysis via Open-Meteo | worldwide, four-month seasonal sample |
+| Air quality | CAMS reanalysis via Open-Meteo | worldwide, four-month seasonal sample, 100% of places |
 | Internet | Ookla open Speedtest tiles, 2025 Q1 | worldwide |
 | Cost of living | World Bank ICP price levels, rebased Spain = 100 | worldwide |
 | Energy and tax | Degree days x published tariffs, curated per country | worldwide |
 | Public transport | OpenStreetMap via Overpass | worldwide: 37,592 stations, 74,277 metro/tram stops, 52,057 coach terminals |
+| Beaches, ski areas, protected land | OpenStreetMap via Overpass | worldwide: 183,084 beaches, 3,435 ski areas, 29,795 protected areas |
 | Shops, health, schools, cycleways | OpenStreetMap via Overpass | Spain |
 | Prices | MIVAU quarterly (ES) + national averages | Spain measured, elsewhere a band |
 | Buying and residence rules | Government and law-firm sources, Sep 2026 | 103 countries |

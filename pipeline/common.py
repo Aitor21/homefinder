@@ -158,18 +158,47 @@ def fetch_file(url, filename, expect_min_bytes=0):
     return dest
 
 
+# The same database, run by different people. Published as mirrors precisely so
+# load can be spread rather than piled on one host.
+OVERPASS_MIRRORS = (
+    "https://overpass-api.de/api/interpreter",
+    "https://overpass.kumi.systems/api/interpreter",
+    "https://overpass.osm.ch/api/interpreter",
+)
+
+
 def overpass(query, cache_key):
-    """POST an Overpass QL query. Cached, so reruns are free."""
+    """POST an Overpass QL query. Cached, so reruns are free.
+
+    Tries each mirror before giving up, and waits in minutes rather than
+    seconds between rounds. Overpass rate limits reset on a timescale of
+    minutes: a backoff that tops out at half a minute abandons the request
+    while the server is still refusing, and the caller then treats an empty
+    result as "nothing there" rather than "never asked". A whole layer was
+    lost that way.
+    """
     body = urllib.parse.urlencode({"data": query}).encode("utf-8")
-    txt = fetch(
-        "https://overpass-api.de/api/interpreter",
-        cache_key=cache_key,
-        data=body,
-        retries=5,
-        pause=2.0,
-        timeout=900,
-    )
-    return json.loads(txt)
+
+    # Cheap: if it is already on disk no request is made at all.
+    cp = _cache_path(cache_key, ".txt.gz")
+    if cp.exists():
+        return json.loads(fetch(OVERPASS_MIRRORS[0], cache_key=cache_key,
+                                data=body, retries=1, timeout=900))
+
+    last = None
+    for round_no in range(3):
+        for host in OVERPASS_MIRRORS:
+            try:
+                txt = fetch(host, cache_key=cache_key, data=body,
+                            retries=2, pause=4.0, timeout=900)
+                return json.loads(txt)
+            except Exception as exc:  # noqa: BLE001  any mirror may be busy
+                last = exc
+        if round_no < 2:
+            wait = 120 * (round_no + 1)
+            warn(f"all Overpass mirrors busy; waiting {wait}s before retrying")
+            time.sleep(wait)
+    raise RuntimeError(f"every Overpass mirror refused: {type(last).__name__}")
 
 
 # --------------------------------------------------------------------------- geo

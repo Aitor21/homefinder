@@ -23,16 +23,26 @@ import tifffile
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import common as c  # noqa: E402
+import boxes  # noqa: E402
 from worldclim import BASE, NODATA, RES, _geotransform  # noqa: E402
 
-# Overpass bbox for the optional point layers. Kept to Iberia deliberately: a
-# Europe-wide query for beaches or protected areas does not complete, and none of
-# these three feed the score -- they are detail-panel colour. Coast distance,
-# elevation and relief all come from the DEM instead and work everywhere.
-BBOX = "35.0,-19.0,44.5,5.0"
+# Beaches, ski areas and protected land, fetched box by box. A single
+# continent-sized query for any of them times out, which is why an earlier
+# version kept them to Iberia; split up they complete fine, the same way the
+# transit layers do. Coast distance, elevation and relief still come from the
+# DEM and need no query at all.
 
 # Window for "what is around me", in km.
 RELIEF_RADIUS_KM = 25.0
+
+
+def _in_boxes(lat, lon, boxlist):
+    """Vectorised: is each place inside any of these "s,w,n,e" boxes?"""
+    inside = np.zeros(len(lat), dtype=bool)
+    for box in boxlist:
+        s0, w0, n0, e0 = (float(v) for v in box.split(","))
+        inside |= (lat >= s0) & (lat <= n0) & (lon >= w0) & (lon <= e0)
+    return inside
 
 
 def run():
@@ -104,9 +114,9 @@ def run():
             max_elev[j] = min_elev[j] = np.nan
 
     # --- peaks and protected land ----------------------------------------------
-    def points(cache_key, frags):
+    def points(cache_key, frags, bbox=None):
         try:
-            parts = "".join(f"{f}({BBOX});\n " for f in frags)
+            parts = "".join(f"{f}({bbox});\n " for f in frags)
             q = f"[out:json][timeout:600];\n({parts});\nout center;"
             data = c.overpass(q, cache_key=cache_key)
             lat, lon = [], []
@@ -121,27 +131,45 @@ def run():
             c.warn(f"{cache_key} failed ({type(exc).__name__}) -- field will be null")
             return np.array([]), np.array([])
 
-    beach = points("osm_beach_v1", ["node[natural=beach]", "way[natural=beach]"])
-    park = points("osm_park_v1", ['way[boundary=protected_area]["protect_class"~"^[1-5]$"]',
+    def world_points(name, frags):
+        """One layer, every box, concatenated."""
+        lats, lons = [], []
+        for key, bbox in boxes.worldwide().items():
+            a, b = points(f"osm_{name}_{key}_v1", frags, bbox)
+            if len(a):
+                lats.append(a)
+                lons.append(b)
+        if not lats:
+            return np.array([]), np.array([])
+        lat, lon = np.concatenate(lats), np.concatenate(lons)
+        c.log(f"{name}: {len(lat)} features across all boxes", 1)
+        return lat, lon
+
+    beach = world_points("beach", ["node[natural=beach]", "way[natural=beach]"])
+    park = world_points("park", ['way[boundary=protected_area]["protect_class"~"^[1-5]$"]',
                                  "relation[boundary=national_park]"])
-    ski = points("osm_ski_v3", ['way["landuse"="winter_sports"]', 'node["landuse"="winter_sports"]'])
+    ski = world_points("ski", ['way["landuse"="winter_sports"]',
+                               'node["landuse"="winter_sports"]'])
 
     beach_km, _ = c.nearest(lats, lons, *beach)
     park_km, _ = c.nearest(lats, lons, *park)
     ski_km, _ = c.nearest(lats, lons, *ski)
 
-    # These three come from an Iberia-only Overpass box, so outside Spain the
-    # "nearest" one is simply the nearest Spanish one -- which told Brasov, 20 km
-    # from Poiana Brasov, that its closest ski resort was 2,146 km away. A number
-    # that wrong is worse than no number, so it becomes null.
-    is_es = np.array([m["country"] == "ES" for m in munis])
+    # Surveyed worldwide now, but still not everywhere: a place outside every
+    # box gets null rather than the distance to the nearest feature in some
+    # other hemisphere. That is the failure this flag exists to prevent, and it
+    # is how Brasov once came to be told its closest ski resort was 2,146 km
+    # away in the Pyrenees.
+    surveyed = _in_boxes(lats, lons, boxes.all_boxes())
+    c.log(f"{int(surveyed.sum())} places inside a surveyed box, "
+          f"{int((~surveyed).sum())} outside it get null", 1)
 
     def fin(x, nd=1):
         return None if not np.isfinite(x) else round(float(x), nd)
 
     rows = {}
     for j, m in enumerate(munis):
-        local = bool(is_es[j])
+        local = bool(surveyed[j])
         rows[m["id"]] = {
             # DEM-derived, so correct across the whole continent.
             "coastKm": fin(coast_km[j]),
