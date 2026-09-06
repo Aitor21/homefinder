@@ -215,7 +215,7 @@ export default function Questionnaire({ towns, home, initial, onApply, onClose }
                 },
                 {
                   value: 'max' as Strictness,
-                  label: 'As cool as Spain gets',
+                  label: a.want === 'warmer' ? 'As warm as it gets' : 'As cool as it gets',
                   hint: `${strictnessPreview.max.n} towns · e.g. ${strictnessPreview.max.example}`,
                 },
               ]}

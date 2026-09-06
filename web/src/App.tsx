@@ -49,6 +49,10 @@ export default function App() {
   // Where the user is starting from. Not a filter: it removes nothing, it
   // changes what the numbers are measured against.
   const [home, setHome] = useState<string | null>(null);
+  // On a phone the filter panel is a sheet you open, not a column. It is
+  // one piece of state rather than two layouts, so the desktop rules simply
+  // ignore it.
+  const [showFilters, setShowFilters] = useState(false);
   const [showBuilds, setShowBuilds] = useState(true);
   const [answers, setAnswers] = useState<Answers | undefined>(undefined);
   const [notes, setNotes] = useState<string[]>([]);
@@ -170,12 +174,19 @@ export default function App() {
       : [];
 
   return (
-    <div className="app">
+    <div className={showFilters ? "app filters-open" : "app"}>
       <header>
         <h1>HomeFinder</h1>
         <span className="sub">
           {data.meta.count.toLocaleString()} places in {countries.length} countries
         </span>
+        <button
+          className="filtersbtn"
+          onClick={() => setShowFilters((v) => !v)}
+          aria-expanded={showFilters}
+        >
+          {showFilters ? 'Done' : 'Filters'}
+        </button>
         <label className="homepick" title="Everything money-related is shown relative to here">
           I am in
           <select
@@ -218,7 +229,20 @@ export default function App() {
       </header>
 
       <div className="body">
+        {/* Tapping the map or table area closes the filter sheet. Only rendered
+            when it is open, so it cannot swallow clicks on desktop. */}
+        {showFilters && (
+          <div className="scrim" onClick={() => setShowFilters(false)} aria-hidden />
+        )}
         <aside>
+          {/* The drawer covers the header on a phone, and the header is where
+              the button that opened it lives. Without this there is no way
+              back out. Hidden on desktop, where the sidebar is never covering
+              anything. */}
+          <div className="drawerbar">
+            <b>Filters</b>
+            <button onClick={() => setShowFilters(false)}>Done</button>
+          </div>
           <FilterPanel
             filters={filters}
             weights={weights}
