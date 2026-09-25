@@ -1,11 +1,17 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import type { Dataset, Filters, Town, Weights } from './types';
 import { DEFAULT_FILTERS, DEFAULT_WEIGHTS } from './types';
-import { rank, rejectReason, type Ranked } from './scoring';
+import {
+  breakdown, failures, rank, rejectReason, weightedScore, type FilterEnv, type Ranked,
+} from './scoring';
+import { nearMisses, wouldRank } from './nearmiss';
 import type { Listing } from './listings';
 import {
   loadHome, saveHome, countryCostIndex, countryName, homeOptions, FREE_MOVEMENT,
 } from './home';
+import {
+  deviceTimeZone, flightHours, greatCircleKm, homeAnchor, shortestDay, tzGap,
+} from './clock';
 import { fitGems } from './gems';
 import { buildDistribution, learnAffinity } from './affinity';
 import { loadDataset } from './data';
@@ -17,7 +23,13 @@ import TownDetail from './ui/TownDetail';
 import ListingsPanel from './ui/ListingsPanel';
 import Questionnaire from './ui/Questionnaire';
 
-export type Mode = 'score' | 'gems';
+/**
+ * Three ways to read the same ranking:
+ *   score  everything that passes your filters, best first
+ *   near   places one or two things away from the top: see nearmiss.ts
+ *   gems   places priced below what their quality implies: see gems.ts
+ */
+export type Mode = 'score' | 'near' | 'gems';
 
 /**
  * Both lists start empty on purpose. Preloading Bilbao and Madrid meant a new
@@ -31,6 +43,17 @@ const STORE = 'homefinder.answers.v2';
 // reopened on every single load. Offering it once is help; offering it every
 // time is nagging, and the comment below already claimed it did not.
 const SEEN = 'homefinder.wizard-seen.v1';
+// The clock you work to. Defaults to this device's, which is right for nearly
+// everyone; stored only when someone picks a different one.
+const WORK_TZ = 'homefinder.worktz.v1';
+
+function loadWorkTz(): string | null {
+  try {
+    return localStorage.getItem(WORK_TZ) || deviceTimeZone();
+  } catch {
+    return deviceTimeZone();
+  }
+}
 
 export default function App() {
   const [data, setData] = useState<Dataset | null>(null);
@@ -49,6 +72,7 @@ export default function App() {
   // Where the user is starting from. Not a filter: it removes nothing, it
   // changes what the numbers are measured against.
   const [home, setHome] = useState<string | null>(null);
+  const [workTz, setWorkTz] = useState<string | null>(loadWorkTz);
   // On a phone the filter panel is a sheet you open, not a column. It is
   // one piece of state rather than two layouts, so the desktop rules simply
   // ignore it.
@@ -105,6 +129,11 @@ export default function App() {
   const homeIndex = useMemo(() => countryCostIndex(towns, home), [towns, home]);
   const homeName = useMemo(() => countryName(towns, home), [towns, home]);
   const homeList = useMemo(() => homeOptions(towns), [towns]);
+  const anchor = useMemo(() => homeAnchor(towns, home), [towns, home]);
+  const tzList = useMemo(
+    () => Array.from(new Set(towns.map((t) => t.tz).filter(Boolean) as string[])).sort(),
+    [towns],
+  );
   const dist = useMemo(() => (towns.length ? buildDistribution(towns) : null), [towns]);
   const affinity = useMemo(
     () => (dist ? learnAffinity(refs, dist, towns) : null),
@@ -112,22 +141,79 @@ export default function App() {
   );
   const scoreCtx = useMemo(() => ({ refs, affinity, dist }), [refs, affinity, dist]);
 
-  const ranked = useMemo<Ranked[]>(() => {
-    const rows = rank(towns, filters, weights, scoreCtx);
-    for (const r of rows) r.gem = gemModel.gem.get(r.town.id) ?? 0;
-    if (mode === 'gems') {
-      // Still require a decent absolute score -- a cheap town that fails on
-      // everything else is not a gem, it is just cheap.
-      const cutoff = rows.length ? Math.max(...rows.map((r) => r.score)) * 0.62 : 0;
-      return rows.filter((r) => r.score >= cutoff).sort((a, b) => (b.gem ?? 0) - (a.gem ?? 0));
-    }
-    return rows;
-  }, [towns, filters, weights, scoreCtx, mode, gemModel]);
-
-  const sel = useMemo(
-    () => ranked.find((r) => r.town.id === selected) ?? null,
-    [ranked, selected],
+  /** What the clock, home and pet filters need beyond the town itself. */
+  const env = useMemo<FilterEnv>(
+    () => ({
+      tzGap: (t) => tzGap(t.tz, workTz)?.worst ?? null,
+      homeFlightH: anchor
+        ? (t) => flightHours(greatCircleKm(anchor.lat, anchor.lon, t.lat, t.lon))
+        : undefined,
+      winterDaylight: (t) => shortestDay(t.lat),
+      rules: data?.meta.countryRules,
+    }),
+    [workTz, anchor, data],
   );
+
+  const ranked = useMemo<Ranked[]>(
+    () => rank(towns, filters, weights, scoreCtx, env),
+    [towns, filters, weights, scoreCtx, env],
+  );
+  // Near misses look at every place on earth, not only those that pass, so
+  // they are computed from DEFERRED copies of the filters and weights: while a
+  // slider is being dragged React renders the ranking first and lets this
+  // catch up once the hand stops, instead of stuttering on every notch. It
+  // ranks its own deferred copy too, since its bar is the tenth-best score
+  // and must come from the same filters as the places it compares with.
+  const nearFilters = useDeferredValue(filters);
+  const nearWeights = useDeferredValue(weights);
+  const near = useMemo<Ranked[]>(() => {
+    const base = nearFilters === filters && nearWeights === weights
+      ? ranked
+      : rank(towns, nearFilters, nearWeights, scoreCtx, env);
+    return nearMisses(towns, base, nearFilters, nearWeights, scoreCtx, env);
+    // `ranked` is deliberately not a dependency: it is only read when it was
+    // built from exactly these deferred inputs, in which case it is current.
+  }, [towns, nearFilters, nearWeights, scoreCtx, env]);
+
+  // Gems exist only where a price was measured or modelled from measured
+  // neighbours, which is Spain. Everywhere else used to sit in the middle of
+  // the gems list with a residual of zero, ranked above every Spanish town
+  // that happened to be dearer than predicted, which read as a finding and
+  // was an artefact.
+  const gems = useMemo<Ranked[]>(() => {
+    const rows = ranked
+      .filter((r) => gemModel.gem.has(r.town.id))
+      .map((r) => ({ ...r, gem: gemModel.gem.get(r.town.id) }));
+    let best = 0;
+    for (const r of rows) best = Math.max(best, r.score);
+    // Still require a decent absolute score: a cheap town that fails on
+    // everything else is not a gem, it is just cheap.
+    const cutoff = best * 0.62;
+    return rows.filter((r) => r.score >= cutoff).sort((a, b) => (b.gem ?? 0) - (a.gem ?? 0));
+  }, [ranked, gemModel]);
+
+  const rows = mode === 'near' ? near : mode === 'gems' ? gems : ranked;
+
+  const sel = useMemo<Ranked | null>(() => {
+    if (!selected) return null;
+    const hit =
+      rows.find((r) => r.town.id === selected)
+      ?? ranked.find((r) => r.town.id === selected)
+      ?? near.find((r) => r.town.id === selected);
+    if (hit) return hit;
+    // A town the filters exclude, opened from a search. It used to open
+    // nothing at all, which is the least helpful answer to "why is it out?".
+    const t = byId.get(selected);
+    if (!t) return null;
+    const b = breakdown(t, filters, scoreCtx);
+    return {
+      town: t,
+      score: weightedScore(b, weights),
+      breakdown: b,
+      held: failures(t, filters, env).map((failure) => ({ failure })),
+      excluded: true,
+    };
+  }, [rows, ranked, near, selected, byId, filters, scoreCtx, weights, env]);
 
   const applyProfile = (p: Profile, a: Answers) => {
     setFilters(p.filters);
@@ -141,6 +227,16 @@ export default function App() {
       localStorage.setItem(STORE, JSON.stringify(a));
     } catch {
       /* private browsing; the profile just will not persist */
+    }
+  };
+
+  const chooseWorkTz = (tz: string | null) => {
+    setWorkTz(tz ?? deviceTimeZone());
+    try {
+      if (tz && tz !== deviceTimeZone()) localStorage.setItem(WORK_TZ, tz);
+      else localStorage.removeItem(WORK_TZ);
+    } catch {
+      /* the device clock is used next time instead */
     }
   };
 
@@ -214,9 +310,16 @@ export default function App() {
         <button className="primary small" onClick={() => setShowWizard(true)}>
           {answers ? 'Edit preferences' : 'Set up'}
         </button>
-        <div className="modes">
+        <div className="modes" role="tablist" aria-label="How to rank">
           <button className={mode === 'score' ? 'on' : ''} onClick={() => setMode('score')}>
             Best fit
+          </button>
+          <button
+            className={mode === 'near' ? 'on' : ''}
+            onClick={() => setMode('near')}
+            title="Places that would be among your best if you forgave one or two things"
+          >
+            Near misses{near.length ? ` ${near.length}` : ''}
           </button>
           <button className={mode === 'gems' ? 'on' : ''} onClick={() => setMode('gems')}>
             Gems
@@ -225,7 +328,9 @@ export default function App() {
         <button className="link" onClick={() => setShowListings(true)}>
           My listings
         </button>
-        <span className="count">{ranked.length.toLocaleString()} match</span>
+        <span className="count">
+          {rows.length.toLocaleString()} {mode === 'near' ? 'near misses' : 'match'}
+        </span>
       </header>
 
       <div className="body">
@@ -252,6 +357,12 @@ export default function App() {
             towns={towns}
             notes={notes}
             affinity={affinity}
+            homeIndex={homeIndex}
+            homeName={homeName}
+            anchor={anchor}
+            workTz={workTz}
+            tzOptions={tzList}
+            onWorkTz={chooseWorkTz}
             onFilters={setFilters}
             onWeights={setWeights}
             onOpenWizard={() => setShowWizard(true)}
@@ -261,9 +372,10 @@ export default function App() {
         <div className="center">
           <div className="mapwrap">
             <MapView
-              ranked={ranked}
+              ranked={rows}
               mode={mode}
               selected={selected}
+              focus={sel?.town ?? null}
               onSelect={setSelected}
               listings={listings}
               showPlaces={showPlaces}
@@ -276,7 +388,8 @@ export default function App() {
                   checked={showPlaces}
                   onChange={(e) => setShowPlaces(e.target.checked)}
                 />
-                Places <span className="n">{ranked.length.toLocaleString()}</span>
+                {mode === 'near' ? 'Near misses' : 'Places'}{' '}
+                <span className="n">{rows.length.toLocaleString()}</span>
               </label>
               <label className={listings.length ? '' : 'off'}>
                 <input
@@ -295,15 +408,19 @@ export default function App() {
             </div>
           </div>
           <TownTable
-            ranked={ranked}
+            ranked={rows}
+            base={ranked}
             all={towns}
-            reject={(t) => rejectReason(t, filters)}
+            reject={(t) => rejectReason(t, filters, env)}
             mode={mode}
             gemModel={gemModel}
             compare={compare}
             refs={refs}
             affinity={affinity}
             dist={dist}
+            homeIndex={homeIndex}
+            workTz={workTz}
+            showPets={weights.pets > 0}
             selected={selected}
             onSelect={setSelected}
           />
@@ -313,15 +430,21 @@ export default function App() {
           <div className="detail">
             <TownDetail
               ranked={sel}
+              wouldRank={sel.forgiven != null ? wouldRank(ranked, sel.forgiven) : null}
+              rankNow={sel.forgiven != null || sel.excluded ? wouldRank(ranked, sel.score) : null}
               filters={filters}
+              env={env}
               gemModel={gemModel}
               refs={refs}
               compare={compare}
               rules={data.meta.countryRules}
               homeIndex={homeIndex}
               homeName={homeName}
+              anchor={anchor}
+              workTz={workTz}
               developers={data.meta.developers}
               onClose={() => setSelected(null)}
+              onRelax={(patch) => setFilters((f) => ({ ...f, ...patch }))}
               onToggleFavourite={(t: Town) =>
                 setFilters((f) => ({
                   ...f,

@@ -158,13 +158,36 @@ def fetch_file(url, filename, expect_min_bytes=0):
     return dest
 
 
-# The same database, run by different people. Published as mirrors precisely so
-# load can be spread rather than piled on one host.
+# The same database, run by different people, so load can be spread rather than
+# piled on one host. Every entry must hold the WHOLE planet: overpass.osm.ch was
+# on this list and only carries Switzerland, so it answered every other query
+# with a perfectly valid, perfectly empty result. `_overpass_ok` now refuses
+# anything that does not look like a full-planet answer, but the list should
+# not need that safety net.
 OVERPASS_MIRRORS = (
     "https://overpass-api.de/api/interpreter",
+    "https://overpass.private.coffee/api/interpreter",
     "https://overpass.kumi.systems/api/interpreter",
-    "https://overpass.osm.ch/api/interpreter",
 )
+
+
+def _overpass_ok(doc):
+    """Is this a real answer, or an error dressed as one?
+
+    Overpass reports a server-side timeout as HTTP 200 with a `remark` and
+    whatever elements it had gathered, often none. Cached, that becomes a
+    permanent "nothing here" for a whole region. A regional extract gives
+    itself away with a base timestamp that is not a date.
+    """
+    if not isinstance(doc, dict) or "elements" not in doc:
+        return False, "no elements"
+    remark = str(doc.get("remark", ""))
+    if "error" in remark.lower() or "timed out" in remark.lower():
+        return False, remark[:120]
+    base = str((doc.get("osm3s") or {}).get("timestamp_osm_base", ""))
+    if not (len(base) >= 10 and base[4] == "-" and base[7] == "-"):
+        return False, f"not a full-planet server (base {base!r})"
+    return True, ""
 
 
 def overpass(query, cache_key):
@@ -178,20 +201,43 @@ def overpass(query, cache_key):
     lost that way.
     """
     body = urllib.parse.urlencode({"data": query}).encode("utf-8")
+    cp = _cache_path(cache_key, ".txt.gz")
+
+    def usable(txt):
+        """(doc, why). fetch() caches before anyone can look at the answer, so
+        a bad one is deleted here; otherwise every retry, on every mirror,
+        re-reads the same bad file from disk and fails identically. That
+        happened with a response cut off mid-transfer: chunked encoding sends
+        no length to check, so the half-document was cached as if whole."""
+        try:
+            doc = json.loads(txt)
+        except json.JSONDecodeError:
+            doc, why = None, "truncated or not JSON"
+        else:
+            ok, why = _overpass_ok(doc)
+            if ok:
+                return doc, ""
+        if cp.exists():
+            cp.unlink()
+        return None, why
 
     # Cheap: if it is already on disk no request is made at all.
-    cp = _cache_path(cache_key, ".txt.gz")
     if cp.exists():
-        return json.loads(fetch(OVERPASS_MIRRORS[0], cache_key=cache_key,
+        doc, why = usable(fetch(OVERPASS_MIRRORS[0], cache_key=cache_key,
                                 data=body, retries=1, timeout=900))
+        if doc is not None:
+            return doc
+        warn(f"cached Overpass answer for {cache_key} is unusable ({why}); refetching")
 
     last = None
     for round_no in range(3):
         for host in OVERPASS_MIRRORS:
             try:
-                txt = fetch(host, cache_key=cache_key, data=body,
-                            retries=2, pause=4.0, timeout=900)
-                return json.loads(txt)
+                doc, why = usable(fetch(host, cache_key=cache_key, data=body,
+                                        retries=2, pause=4.0, timeout=900))
+                if doc is None:
+                    raise RuntimeError(f"{host.split('/')[2]}: {why}")
+                return doc
             except Exception as exc:  # noqa: BLE001  any mirror may be busy
                 last = exc
         if round_no < 2:
@@ -253,6 +299,152 @@ def count_within(a_lat, a_lon, b_lat, b_lon, radius_km, chunk=512):
         d = haversine(a_lat[s:e, None], a_lon[s:e, None], b_lat[None, :], b_lon[None, :])
         out[s:e] = (d <= radius_km).sum(axis=1)
     return out
+
+
+# ------------------------------------------------------------ gridded search
+#
+# The two functions above compare every place with every point, which is fine
+# for 3,000 ski areas and hopeless for 400,000 supermarkets: 31k x 400k is twelve
+# billion distances and several gigabytes per chunk. Bucketing the points into
+# half-degree cells means each place only looks at its own neighbourhood.
+#
+# The subtle part is knowing when to stop looking. A candidate found inside the
+# searched block is only the true nearest if nothing OUTSIDE the block could be
+# closer, so each place carries a "safe radius": the shortest possible distance
+# from it to anywhere beyond the block's edge. Meridians converge, so that edge
+# is nearer in longitude than in latitude away from the equator, and the bound
+# uses the exact distance from a point to a meridian rather than assuming a
+# degree of longitude is a fixed length. Results are identical to the brute
+# force versions; `_grid_selftest` checks that on every call site's data shape.
+
+_KM_PER_DEG = np.pi * EARTH_R_KM / 180.0
+
+
+class _PointGrid:
+    def __init__(self, lat, lon, cell):
+        self.lat = np.asarray(lat, dtype=np.float64)
+        self.lon = np.asarray(lon, dtype=np.float64)
+        self.cell = cell
+        self.ncols = int(round(360.0 / cell))
+        self.nrows = int(round(180.0 / cell)) + 1
+        gy, gx = self.cells(self.lat, self.lon)
+        key = gy * self.ncols + gx
+        self.order = np.argsort(key, kind="stable")
+        ks = key[self.order]
+        uniq, start = np.unique(ks, return_index=True)
+        end = np.r_[start[1:], len(ks)]
+        self.index = {int(k): (int(s), int(e)) for k, s, e in zip(uniq, start, end)}
+
+    def cells(self, lat, lon):
+        gy = np.clip(((lat + 90.0) // self.cell).astype(np.int64), 0, self.nrows - 1)
+        gx = ((lon + 180.0) // self.cell).astype(np.int64) % self.ncols
+        return gy, gx
+
+    def block(self, gy, gx, r):
+        """Indices of every point within r cells of cell (gy, gx), wrapping at 180."""
+        parts = []
+        xs = range(self.ncols) if 2 * r + 1 >= self.ncols else range(gx - r, gx + r + 1)
+        for y in range(max(0, gy - r), min(self.nrows - 1, gy + r) + 1):
+            base = y * self.ncols
+            for x in xs:
+                se = self.index.get(base + (x % self.ncols))
+                if se:
+                    parts.append(self.order[se[0]:se[1]])
+        return np.concatenate(parts) if parts else np.empty(0, dtype=np.int64)
+
+
+def _safe_km(lat, reach_deg):
+    """Shortest distance from each point to anything `reach_deg` beyond its cell."""
+    along_lat = reach_deg * _KM_PER_DEG
+    x = np.radians(min(90.0, reach_deg))
+    along_lon = EARTH_R_KM * np.arcsin(np.clip(np.cos(np.radians(lat)) * np.sin(x), 0, 1))
+    return np.minimum(along_lat, along_lon)
+
+
+def _groups(grid, a_lat, a_lon):
+    gy, gx = grid.cells(a_lat, a_lon)
+    key = gy * grid.ncols + gx
+    order = np.argsort(key, kind="stable")
+    ks = key[order]
+    uniq, start = np.unique(ks, return_index=True)
+    end = np.r_[start[1:], len(ks)]
+    for k, s, e in zip(uniq, start, end):
+        yield int(k) // grid.ncols, int(k) % grid.ncols, order[s:e]
+
+
+def nearest_grid(a_lat, a_lon, b_lat, b_lon, cell=0.5):
+    """Same contract as `nearest`, for point sets too large to brute-force."""
+    a_lat = np.asarray(a_lat, dtype=np.float64)
+    a_lon = np.asarray(a_lon, dtype=np.float64)
+    n = a_lat.size
+    dist = np.full(n, np.inf)
+    idx = np.full(n, -1, dtype=np.int64)
+    if b_lat is None or len(b_lat) == 0 or n == 0:
+        return dist, idx
+    g = _PointGrid(b_lat, b_lon, cell)
+    everything = np.arange(len(g.lat))
+    for gy, gx, members in _groups(g, a_lat, a_lon):
+        todo = members
+        r = 1
+        while len(todo):
+            # Past a quarter of the planet the block is no cheaper than
+            # looking at everything, and looking at everything is always right.
+            full = r * cell >= 45.0
+            cand = everything if full else g.block(gy, gx, r)
+            if len(cand):
+                d = haversine(a_lat[todo][:, None], a_lon[todo][:, None],
+                              g.lat[cand][None, :], g.lon[cand][None, :])
+                j = np.argmin(d, axis=1)
+                dm = d[np.arange(len(todo)), j]
+                ok = np.ones(len(todo), dtype=bool) if full else dm <= _safe_km(a_lat[todo], r * cell)
+                dist[todo[ok]] = dm[ok]
+                idx[todo[ok]] = cand[j[ok]]
+                todo = todo[~ok]
+            if full:
+                break
+            r *= 2
+    return dist, idx
+
+
+def count_within_grid(a_lat, a_lon, b_lat, b_lon, radius_km, cell=0.5):
+    """Same contract as `count_within`, gridded."""
+    a_lat = np.asarray(a_lat, dtype=np.float64)
+    a_lon = np.asarray(a_lon, dtype=np.float64)
+    out = np.zeros(a_lat.size, dtype=np.int32)
+    if b_lat is None or len(b_lat) == 0 or a_lat.size == 0:
+        return out
+    g = _PointGrid(b_lat, b_lon, cell)
+    for gy, gx, members in _groups(g, a_lat, a_lon):
+        # Enough rings that the safe radius covers the search radius for the
+        # most poleward place in the cell.
+        r = 1
+        while r * cell < 45.0 and (_safe_km(a_lat[members], r * cell) < radius_km).any():
+            r += 1
+        cand = np.arange(len(g.lat)) if r * cell >= 45.0 else g.block(gy, gx, r)
+        if not len(cand):
+            continue
+        d = haversine(a_lat[members][:, None], a_lon[members][:, None],
+                      g.lat[cand][None, :], g.lon[cand][None, :])
+        out[members] = (d <= radius_km).sum(axis=1)
+    return out
+
+
+def _grid_selftest(seed=7):
+    """The gridded search must agree with brute force, including at the date
+    line and far north, which is where a lazy bound would go wrong."""
+    rng = np.random.default_rng(seed)
+    a_lat = np.r_[rng.uniform(-60, 72, 400), [65.0, 70.5, -46.0, 0.0]]
+    a_lon = np.r_[rng.uniform(-180, 180, 400), [179.9, -179.8, 169.0, 179.99]]
+    b_lat = np.r_[rng.uniform(-60, 75, 3000), [65.1, -46.2]]
+    b_lon = np.r_[rng.uniform(-180, 180, 3000), [-179.9, 168.7]]
+    d1, _ = nearest(a_lat, a_lon, b_lat, b_lon)
+    d2, _ = nearest_grid(a_lat, a_lon, b_lat, b_lon)
+    if not np.allclose(d1, d2):
+        raise SystemExit(f"nearest_grid disagrees with brute force: max diff {np.max(np.abs(d1 - d2))}")
+    c1 = count_within(a_lat, a_lon, b_lat, b_lon, 300.0)
+    c2 = count_within_grid(a_lat, a_lon, b_lat, b_lon, 300.0)
+    if not np.array_equal(c1, c2):
+        raise SystemExit("count_within_grid disagrees with brute force")
 
 
 # ---------------------------------------------------------------------------- io

@@ -83,6 +83,9 @@ aside {
 .f .val { font: 600 12px var(--mono); color: var(--ink); font-variant-numeric: tabular-nums; }
 .f input[type=range] { width: 100%; accent-color: var(--accent); margin: 0; }
 .f .hint { font-size: 11px; color: var(--ink-3); margin-top: 2px; }
+/* Hints that explain a whole group rather than one slider. They used to fall
+   through to body text and read as louder than the controls they explain. */
+.group > .hint { font-size: 11px; color: var(--ink-3); line-height: 1.45; margin: 4px 0 6px; }
 
 .chk { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--ink-2); margin-bottom: 6px; cursor: pointer; }
 .chk input { accent-color: var(--accent); margin: 0; }
@@ -375,6 +378,46 @@ button.chipbtn:hover { border-color: var(--accent); color: var(--accent); }
 .warn {
   margin-left: 8px; font-size: 11px; color: var(--warm);
   border: 1px solid var(--warm); border-radius: 4px; padding: 1px 6px;
+}
+
+/* ------------------------------------------------------ near misses */
+
+.modehint {
+  font-size: 12px; color: var(--ink-2); background: #faf8ff;
+  border-bottom: 1px solid var(--line); padding: 8px 12px;
+}
+.held { display: flex; flex-wrap: wrap; gap: 4px; }
+td.heldcol { white-space: normal; min-width: 220px; max-width: 380px; }
+.chip {
+  display: inline-block; font-size: 11px; line-height: 1.35; padding: 1px 6px;
+  border-radius: 4px; border: 1px solid var(--line); background: var(--panel); color: var(--ink-2);
+}
+/* Just over the line reads as green, not even close as red: the same place
+   can be one of each, and which is which is the whole decision. */
+.chip.close { border-color: #b8dcc8; background: #eef8f2; color: #1c6b46; }
+.chip.far   { border-color: #f1c7cd; background: #fdf1f3; color: #96222f; }
+.chip.kind  { border-color: var(--line); background: #f1f1f3; color: #6b7280; }
+.note.nearmiss { border-left-color: var(--gem); background: #faf8ff; }
+.note.excluded { border-left-color: var(--hot); }
+.heldlist { margin: 6px 0 4px; padding-left: 16px; }
+.heldlist li { margin: 4px 0; }
+.scorebars .r.weak .lbl { color: var(--hot); font-weight: 600; }
+.warnval { color: var(--hot); font-weight: 600; }
+
+/* ------------------------------------------------------ pets */
+
+.pill.pet-passport   { background: #e6f4ec; color: #1c6b46; }
+.pill.pet-paperwork  { background: #e8f0fe; color: #1f4fa8; }
+.pill.pet-titer      { background: #fdf0e2; color: #9a5b1c; }
+.pill.pet-quarantine { background: #fbe6e9; color: #96222f; }
+
+/* ------------------------------------------------------ select rows */
+
+label.sel { display: flex; flex-direction: column; gap: 3px; margin-bottom: 11px; }
+label.sel .name { font-size: 12px; color: var(--ink-2); }
+label.sel select {
+  font: inherit; font-size: 12px; padding: 4px 6px; border-radius: 5px;
+  border: 1px solid var(--line); background: var(--panel); color: var(--ink); width: 100%;
 }
 
 /* =======================================================================

@@ -1,8 +1,10 @@
 import type { Filters, Ownership, Town, Weights } from '../types';
-import { POP_ANY } from '../types';
+import { POP_ANY, SAFETY_ANY } from '../types';
 import { OWNERSHIP_LABEL } from '../types';
 import { explain, MIN_PICKS, type Affinity } from '../affinity';
 import { DEFAULT_FILTERS, DEFAULT_WEIGHTS } from '../types';
+import { rebaseCost } from '../home';
+import { deviceTimeZone } from '../clock';
 
 interface Props {
   filters: Filters;
@@ -14,6 +16,15 @@ interface Props {
   /** Plain-English account of what the questionnaire set, if it has been run. */
   notes: string[];
   affinity: Affinity | null;
+  /** Cost index of the home country, so the slider reads "home = 100". */
+  homeIndex: number | null;
+  homeName: string | null;
+  /** The place home distances are measured from. */
+  anchor: Town | null;
+  /** The clock the user works to, and the zones they can pick instead. */
+  workTz: string | null;
+  tzOptions: string[];
+  onWorkTz: (tz: string | null) => void;
   onFilters: (f: Filters) => void;
   onWeights: (w: Weights) => void;
   onOpenWizard: () => void;
@@ -54,6 +65,11 @@ const km = (v: number) => v + ' km';
 const days = (v: number) => v + ' d';
 const mins = (v: number) =>
   v >= 90 ? Math.floor(v / 60) + ' h ' + String(v % 60).padStart(2, '0') : v + ' min';
+const hrs = (v: number) => (Number.isInteger(v) ? `${v} h` : `${Math.floor(v)} h 30`);
+
+// Sliders cannot hold null, so "no limit" lives one notch past the top.
+const TZ_ANY = 13;
+const FLIGHT_ANY = 17;
 
 export default function FilterPanel(p: Props) {
   const f = p.filters;
@@ -172,6 +188,16 @@ export default function FilterPanel(p: Props) {
           hint="For anyone ruling out places that get genuinely cold in winter"
           onChange={(v) => set({ minWinterTmin: v })}
         />
+        <Slider
+          name="Midwinter daylight at least"
+          value={f.minWinterDaylight}
+          min={0}
+          max={11}
+          step={0.5}
+          fmt={(v) => (v === 0 ? 'any' : hrs(v))}
+          hint="Sunrise to sunset on the shortest day. Oslo gets about 6 hours, Madrid 9, and above the Arctic Circle none at all."
+          onChange={(v) => set({ minWinterDaylight: v })}
+        />
       </div>
 
       <div className="group">
@@ -272,15 +298,86 @@ export default function FilterPanel(p: Props) {
           onChange={(v) => set({ maxPm25: v })}
         />
         <Slider
-          name="Cost of living at most"
+          name={`Cost of living at most (${p.homeName ?? 'Spain'} = 100)`}
           value={f.maxCostIndex}
           min={40}
           max={250}
           step={5}
-          fmt={(v) => (v >= 250 ? 'any' : String(v))}
-          hint="World Bank price level. The town panel shows this relative to wherever you say you are."
+          fmt={(v) => (v >= 250 ? 'any' : String(rebaseCost(v, p.homeIndex)))}
+          hint="World Bank price level for everyday spending, measured against where you say you are."
           onChange={(v) => set({ maxCostIndex: v })}
         />
+        <Slider
+          name="Homicide rate at most"
+          value={f.maxHomicide}
+          min={1}
+          max={SAFETY_ANY}
+          fmt={(v) => (v >= SAFETY_ANY ? 'any' : `${v} per 100,000`)}
+          hint="National, from UNODC via the World Bank: Japan 0.2, Spain 0.7, the United States 5.8. It separates countries, not one town from the next."
+          onChange={(v) => set({ maxHomicide: v })}
+        />
+      </div>
+
+      <div className="group">
+        <h3>Remote work &amp; family</h3>
+        <label className="sel">
+          <span className="name">Your working clock</span>
+          <select
+            value={p.workTz ?? ''}
+            onChange={(e) => p.onWorkTz(e.target.value || null)}
+          >
+            {(() => {
+              const dev = deviceTimeZone();
+              const opts = dev && !p.tzOptions.includes(dev) ? [dev, ...p.tzOptions] : p.tzOptions;
+              return opts.map((z) => (
+                <option key={z} value={z}>
+                  {z.replace(/_/g, ' ')}{z === dev ? ' (this device)' : ''}
+                </option>
+              ));
+            })()}
+          </select>
+        </label>
+        <Slider
+          name="Time difference at most"
+          value={f.maxTzDiff ?? TZ_ANY}
+          min={0}
+          max={TZ_ANY}
+          fmt={(v) => (v >= TZ_ANY ? 'any' : v === 0 ? 'same time' : `${v} h`)}
+          hint="Checked in January and in July, since daylight saving moves on different dates in different places."
+          onChange={(v) => set({ maxTzDiff: v >= TZ_ANY ? null : v })}
+        />
+        <Slider
+          name="Flight from home at most"
+          value={f.maxHomeFlightH ?? FLIGHT_ANY}
+          min={1}
+          max={FLIGHT_ANY}
+          fmt={(v) => (v >= FLIGHT_ANY ? 'any' : `${v} h`)}
+          hint={
+            p.anchor
+              ? `Direct flight time from ${p.anchor.name}, roughly; connections add more.`
+              : 'Set where you are, at the top of the page, to use this.'
+          }
+          onChange={(v) => set({ maxHomeFlightH: v >= FLIGHT_ANY ? null : v })}
+        />
+      </div>
+
+      <div className="group">
+        <h3>Moving with a pet</h3>
+        <label className="chk">
+          <input
+            type="checkbox"
+            checked={f.noPetQuarantine}
+            onChange={(e) => set({ noPetQuarantine: e.target.checked })}
+          />
+          Leave out countries that quarantine arriving pets
+        </label>
+        <div className="hint">
+          Australia, New Zealand, Iceland, Taiwan, Malaysia, Mauritius and the Seychelles
+          hold an arriving dog or cat in quarantine however well you plan. Japan, Korea,
+          Singapore and a few islands want a rabies blood test months ahead instead. Each
+          town panel says what bringing an animal in takes. Raise the <b>Good for a dog</b>
+          {' '}weight to rank by vets, walks and bearable summers.
+        </div>
       </div>
 
       <div className="group">
@@ -328,6 +425,10 @@ export default function FilterPanel(p: Props) {
             ['internet', 'Fast broadband'],
             ['livingCost', 'Cheap to live in'],
             ['energyBill', 'Low energy bill'],
+            ['nature', 'Protected nature nearby'],
+            ['ski', 'Ski slopes nearby'],
+            ['pets', 'Good for a dog'],
+            ['safety', 'Low homicide rate'],
             ['affinity', 'Like my picks'],
           ] as Array<[keyof Weights, string]>
         ).map(([k, label]) => (
@@ -356,7 +457,10 @@ export default function FilterPanel(p: Props) {
             ))}
           </div>
         ) : (
-          <div className="hint">None chosen &mdash; the climate-match weight has nothing to aim at.</div>
+          <div className="hint">
+            None chosen. Add any town from its detail panel; with three or more, the "Like my
+            picks" weight learns what they have in common.
+          </div>
         )}
         <div className="hint">
           Every candidate is matched against the <b>closest</b> of these, not their average:
@@ -500,9 +604,10 @@ export default function FilterPanel(p: Props) {
           ))}
         </div>
         <div className="hint">
-          Spain has official municipal prices and a full amenity survey. Everywhere else
-          carries a national price band and rail access only, useful for finding the
-          climate, not for valuing a house.
+          Climate, air, broadband, transport, shops, health, vets, nature and ski are
+          measured everywhere. Prices are the exception: only Spain publishes them per
+          town, so elsewhere the figure is a national band, fine for shortlisting and not
+          for valuing a house.
         </div>
       </div>
 

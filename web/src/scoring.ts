@@ -12,9 +12,9 @@
  *    tool is for someone with external income, so a weak local labour market is
  *    a discount to capture rather than a defect to avoid. See gems.ts.
  */
-import type { Town, Filters, Weights } from './types';
-import { POP_ANY } from './types';
-import { driveMinutes } from './travel';
+import type { CountryRule, Town, Filters, Weights } from './types';
+import { POP_ANY, SAFETY_ANY } from './types';
+import { driveMinutes, formatDrive } from './travel';
 import { affinityScore, type Affinity, type Distribution } from './affinity';
 
 export const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
@@ -96,26 +96,6 @@ export const airportDriveMin = (t: Town) => driveMinutes(t.airportKm, t.relief25
 export const hubDriveMin = (t: Town) => driveMinutes(t.hubKm, t.relief25km);
 
 /**
- * Everyday services: can you live here without driving for an hour?
- *
- * Returns null where the layer was never surveyed. That is not the same as
- * scoring zero -- a town must never be marked down for data we did not collect.
- * `score()` drops null dimensions and renormalises the remaining weights.
- */
-/**
- * Services within reach, from whichever layers were actually surveyed here.
- *
- * The two layers have different footprints and it matters: shops, health and
- * schools are Spain only, rail covers Europe and much of Asia. Bailing out on
- * `amenitiesSurveyed` alone meant 15,808 places had real, measured rail access
- * that the model then refused to look at, which is the same sin as inventing
- * data, just in the other direction.
- *
- * Each part contributes only where it was measured and the weights renormalise,
- * so a Romanian town is judged on its station and never marked down for the
- * Spanish supermarket layer nobody ran there.
- */
-/**
  * Distance to public transport of any kind, in km, or null where none of the
  * layers were surveyed. Takes the nearest of mainline rail, urban rail and
  * coach terminal, because the question is whether you can leave without a car,
@@ -129,13 +109,35 @@ export function transitKm(t: Town): number | null {
   return ds.length ? Math.min(...ds) : null;
 }
 
+/**
+ * Everyday services: can you live here without driving for an hour?
+ *
+ * Each layer contributes only where it was actually surveyed, and the weights
+ * renormalise, so a town is never marked down for data nobody collected. That
+ * used to matter a great deal, when shops and health were Spain only and rail
+ * covered Europe and Asia; both are worldwide now, but a box that failed to
+ * download still leaves a null, and a null must still mean "not looked at".
+ *
+ * Returns null only when nothing at all was surveyed. `score()` drops null
+ * dimensions and renormalises the remaining weights.
+ */
+/**
+ * Below this, a country's own big towns show under a third of the shops (or
+ * vets) the typical country's do, and a long distance there says more about
+ * OpenStreetMap than about the town. China maps essentially none; Brazil maps
+ * its supermarkets and barely any vets. Those layers then drop out of the
+ * score, the same as a layer nobody surveyed, and the town panel says why.
+ */
+export const THIN_MAPPING = 0.35;
+const thin = (ratio: number | null | undefined) => ratio != null && ratio < THIN_MAPPING;
+
 export function amenityScore(t: Town): number | null {
   const parts: Array<[number, number]> = [];
   const add = (w: number, v: number | null) => {
     if (v != null && Number.isFinite(v)) parts.push([w, v]);
   };
 
-  if (t.amenitiesSurveyed !== false) {
+  if (t.amenitiesSurveyed !== false && !thin(t.servicesMapped)) {
     add(0.26, t.supermarketKm == null ? null : inv(t.supermarketKm, 0, 20));
     add(0.16, t.supermarket5km == null ? null : norm(t.supermarket5km, 0, 8));
     add(0.2, t.pharmacyKm == null ? null : inv(t.pharmacyKm, 0, 15));
@@ -191,8 +193,72 @@ export function summerFit(t: Town, target: number | null): number | null {
   return 1 - clamp(Math.abs(t.hottestTmax - target) / 9, 0, 1);
 }
 
+/**
+ * The sea, from the elevation model's coastline. Deliberately NOT the beach
+ * layer: OpenStreetMap maps river and lake beaches as beaches too, which put
+ * Madrid five kilometres from "the beach".
+ */
 export function coastScore(t: Town): number {
   return t.coastKm == null ? 0 : inv(t.coastKm, 2, 70);
+}
+
+/**
+ * Protected nature within reach, measured to the EDGE of the nearest national
+ * park, protected area or nature reserve. Within half an hour's drive is where
+ * this stops being an expedition and becomes a weekend habit.
+ */
+export function natureScore(t: Town): number | null {
+  return t.parkKm == null ? null : inv(t.parkKm, 0, 40);
+}
+
+/**
+ * Ski slopes. A day trip is the useful threshold: under an hour and a half each
+ * way, or roughly 120 km, and a weekend on the snow is something you do rather
+ * than something you plan.
+ */
+export function skiScore(t: Town): number | null {
+  return t.skiKm == null ? null : inv(t.skiKm, 10, 150);
+}
+
+/**
+ * How good a place is to live in with a dog, from the things that actually
+ * decide it, weighted by how much each one matters day to day:
+ *
+ *   a vet nearby         0.40  the one you need at 2 am
+ *   nature to walk in    0.30  protected land within reach
+ *   summers it can bear  0.30  dogs overheat far sooner than people do
+ *
+ * Each part is used only where it was measured, and the rest renormalise, so a
+ * town is never marked down for a layer nobody surveyed, or for vets that exist
+ * but that nobody put on the map (see THIN_MAPPING).
+ *
+ * A dog park is a BONUS on top, closing up to a fifth of the remaining gap when
+ * one is close. Never a penalty: whether a country fences off dog areas at all
+ * is cultural, and whether it maps them is luck, so their absence proves
+ * nothing either way.
+ */
+export function petScore(t: Town): number | null {
+  const parts: Array<[number, number]> = [];
+  if (t.petsSurveyed !== false && t.vetKm != null && !thin(t.vetsMapped))
+    parts.push([0.4, inv(t.vetKm, 1, 25)]);
+  if (t.parkKm != null) parts.push([0.3, inv(t.parkKm, 0, 30)]);
+  if (Number.isFinite(t.daysOver30)) parts.push([0.3, inv(t.daysOver30, 0, 90)]);
+  if (!parts.length) return null;
+  const wsum = parts.reduce((a, [w]) => a + w, 0);
+  const base = parts.reduce((a, [w, v]) => a + w * v, 0) / wsum;
+  const park = t.petsSurveyed !== false && t.dogParkKm != null ? inv(t.dogParkKm, 1, 10) : 0;
+  return base + (1 - base) * 0.2 * park;
+}
+
+/**
+ * National homicide rate, on a log scale. Rates run from 0.2 in Japan to 40 and
+ * more, so a linear scale would call every European country identical and
+ * every Latin American one hopeless; on a log scale a tenfold gap reads as the
+ * big difference it is. Anchored at 0.5 (as safe as it gets) and 20.
+ */
+export function safetyScore(t: Town): number | null {
+  if (t.homicideRate == null) return null;
+  return inv(Math.log10(Math.max(t.homicideRate, 0.1)), Math.log10(0.5), Math.log10(20));
 }
 
 /**
@@ -270,6 +336,10 @@ export interface Breakdown {
   livingCost: number | null;
   energyBill: number | null;
   affinity: number | null;
+  nature: number | null;
+  ski: number | null;
+  pets: number | null;
+  safety: number | null;
 }
 
 export function breakdown(t: Town, f: Filters, ctx: ScoreContext): Breakdown {
@@ -291,17 +361,25 @@ export function breakdown(t: Town, f: Filters, ctx: ScoreContext): Breakdown {
     energyBill: energyScore(t),
     affinity:
       ctx.affinity && ctx.dist ? affinityScore(t, ctx.affinity, ctx.dist) : null,
+    nature: natureScore(t),
+    ski: skiScore(t),
+    pets: petScore(t),
+    safety: safetyScore(t),
   };
 }
 
-/** Weighted 0..100 score. Weights are relative; they are normalised here. */
-export function score(t: Town, f: Filters, w: Weights, ctx: ScoreContext): number {
-  const b = breakdown(t, f, ctx);
+/**
+ * Weighted 0..100 score of a breakdown. Weights are relative and normalised
+ * here. `skip` leaves dimensions out entirely, which is how a near miss is
+ * scored "as if you did not mind" the thing holding it back.
+ */
+export function weightedScore(b: Breakdown, w: Weights, skip?: ReadonlySet<keyof Breakdown>): number {
   let total = 0;
   let wsum = 0;
   for (const k of Object.keys(b) as Array<keyof Breakdown>) {
     const v = b[k];
     if (v == null) continue; // not surveyed: drop it and renormalise
+    if (skip?.has(k)) continue;
     const weight = w[k] ?? 0;
     total += weight * v;
     wsum += weight;
@@ -309,8 +387,240 @@ export function score(t: Town, f: Filters, w: Weights, ctx: ScoreContext): numbe
   return wsum === 0 ? 0 : (100 * total) / wsum;
 }
 
-/** Hard filters. Returns null if the town passes, or the reason it failed. */
-export function rejectReason(t: Town, f: Filters): string | null {
+/** Weighted 0..100 score. Weights are relative; they are normalised here. */
+export function score(t: Town, f: Filters, w: Weights, ctx: ScoreContext): number {
+  return weightedScore(breakdown(t, f, ctx), w);
+}
+
+// ------------------------------------------------------------------ filters
+
+/**
+ * What some filters need to know that the town alone cannot tell them: where
+ * the user's clock is, where home is, and the per-country rules. Optional,
+ * because most callers (tests, the questionnaire's live count) do not set those
+ * filters, and a filter whose context is missing simply does not apply.
+ */
+export interface FilterEnv {
+  /** Worst-case hours between this place's clock and the user's, or null. */
+  tzGap?: (t: Town) => number | null;
+  /** Estimated flight hours from home, or null when no home is set. */
+  homeFlightH?: (t: Town) => number | null;
+  /** Hours of daylight on the shortest day. */
+  winterDaylight?: (t: Town) => number;
+  /** Country rules, for the pet quarantine filter. */
+  rules?: Record<string, CountryRule>;
+}
+
+export type FailKey =
+  | 'budget' | 'hotDays' | 'warmNights' | 'hotMax' | 'hotMin' | 'winterMin'
+  | 'airport' | 'hub' | 'city' | 'transit' | 'train' | 'net' | 'air' | 'cost'
+  | 'popMin' | 'popMax' | 'tz' | 'daylight' | 'homeFlight' | 'homicide'
+  | 'ownership' | 'visa' | 'continent' | 'country' | 'region' | 'observedPrice'
+  | 'petQuarantine';
+
+/**
+ * One filter a place fails, with enough detail to say how badly.
+ *
+ * `relaxable` splits the filters into two kinds. A threshold (an hour to the
+ * airport, a budget) is a matter of degree: a place past it might still be the
+ * right answer, and the near-miss view exists to show those. WHERE you are
+ * willing to live is a matter of kind: a town outside the countries you picked
+ * is not "nearly" in them, so those are never forgiven.
+ */
+export interface Failure {
+  key: FailKey;
+  /** Short reason, exactly as `rejectReason` reports it. */
+  reason: string;
+  relaxable: boolean;
+  /**
+   * How far past the limit, scaled so 1 means "a long way": a full hour over a
+   * one-hour limit, 3 C over a temperature bar, twice the budget. 0 for the
+   * categorical filters. Near misses sort their reasons by it.
+   */
+  miss: number;
+  /** The measured value and the limit, formatted for reading. */
+  value?: string;
+  limit?: string;
+  /** The score dimension this filter mirrors, forgiven along with it. */
+  dim?: keyof Breakdown;
+}
+
+const eurK = (v: number) => `€${Math.round(v / 1000).toLocaleString()}k`;
+const r1 = (v: number) => Math.round(v * 10) / 10;
+
+type Draft = Omit<Failure, 'value' | 'limit'> & { value?: () => string; limit?: () => string };
+
+/**
+ * A failure whose readable strings are built only when something reads them.
+ * The near-miss view asks for every failure of every place on each slider
+ * move, around 90,000 of them, and nearly all are counted and thrown away.
+ * Formatting them eagerly ("2 h 10 to BIO", "€520k for 80 m²") was most of
+ * the cost of the whole view. Getters on the prototype keep the Failure
+ * shape unchanged for everything downstream.
+ */
+class LazyFailure implements Failure {
+  key: FailKey;
+  reason: string;
+  relaxable: boolean;
+  miss: number;
+  dim?: keyof Breakdown;
+  private v?: () => string;
+  private l?: () => string;
+  constructor(d: Draft) {
+    this.key = d.key;
+    this.reason = d.reason;
+    this.relaxable = d.relaxable;
+    this.miss = d.miss;
+    this.dim = d.dim;
+    this.v = d.value;
+    this.l = d.limit;
+  }
+  get value() { return this.v?.(); }
+  get limit() { return this.l?.(); }
+}
+
+/** Every filter the place fails, in the order the panel lists them. */
+export function failures(t: Town, f: Filters, env: FilterEnv = {}): Failure[] {
+  const out: Failure[] = [];
+  const push = (x: Draft) => out.push(new LazyFailure(x));
+
+  const price = priceFor(t, f.minM2);
+  if (price > f.budget)
+    push({ key: 'budget', reason: 'over budget', relaxable: true, dim: 'affordability',
+      miss: price / f.budget - 1, value: () => `${eurK(price)} for ${f.minM2} m²`,
+      limit: () => eurK(f.budget) });
+  if (t.daysOver30 > f.maxDaysOver30)
+    push({ key: 'hotDays', reason: 'too many hot days', relaxable: true, dim: 'summerFit',
+      miss: (t.daysOver30 - f.maxDaysOver30) / Math.max(f.maxDaysOver30, 10),
+      value: () => `${Math.round(t.daysOver30)} days over 30 °C`, limit: () => `${f.maxDaysOver30}` });
+  if (t.tropicalNights > f.maxTropicalNights)
+    push({ key: 'warmNights', reason: 'too many warm nights', relaxable: true, dim: 'summerFit',
+      miss: (t.tropicalNights - f.maxTropicalNights) / Math.max(f.maxTropicalNights, 10),
+      value: () => `${Math.round(t.tropicalNights)} nights over 20 °C`, limit: () => `${f.maxTropicalNights}` });
+  if (t.hottestTmax > f.maxHotTmax)
+    push({ key: 'hotMax', reason: 'hottest month too hot', relaxable: true, dim: 'summerFit',
+      miss: (t.hottestTmax - f.maxHotTmax) / 3, value: () => `${r1(t.hottestTmax)} °C peak`,
+      limit: () => `${f.maxHotTmax} °C` });
+  if (t.hottestTmax < f.minHotTmax)
+    push({ key: 'hotMin', reason: 'hottest month too cool', relaxable: true, dim: 'summerFit',
+      miss: (f.minHotTmax - t.hottestTmax) / 3, value: () => `${r1(t.hottestTmax)} °C peak`,
+      limit: () => `${f.minHotTmax} °C` });
+  if (t.winterTmin < f.minWinterTmin)
+    push({ key: 'winterMin', reason: 'winters too cold', relaxable: true, dim: 'winterMild',
+      miss: (f.minWinterTmin - t.winterTmin) / 3, value: () => `${r1(t.winterTmin)} °C winter nights`,
+      limit: () => `${f.minWinterTmin} °C` });
+  const air = airportDriveMin(t);
+  if (air != null && air > f.maxAirportMin)
+    push({ key: 'airport', reason: 'airport too far', relaxable: true, dim: 'airport',
+      miss: (air - f.maxAirportMin) / f.maxAirportMin,
+      value: () => `${formatDrive(air)} to ${t.airportName}`, limit: () => formatDrive(f.maxAirportMin) });
+  const hub = hubDriveMin(t);
+  if (hub != null && hub > f.maxHubMin)
+    push({ key: 'hub', reason: 'hub airport too far', relaxable: true, dim: 'airport',
+      miss: (hub - f.maxHubMin) / f.maxHubMin,
+      value: () => `${formatDrive(hub)} to ${t.hubName}`, limit: () => formatDrive(f.maxHubMin) });
+  if (t.city100kKm > f.maxCityKm)
+    push({ key: 'city', reason: 'city too far', relaxable: true, dim: 'city',
+      miss: (t.city100kKm - f.maxCityKm) / Math.max(f.maxCityKm, 20),
+      value: () => `${Math.round(t.city100kKm)} km to ${t.city100kName}`, limit: () => `${f.maxCityKm} km` });
+  if (f.maxTransitKm != null) {
+    const d = transitKm(t);
+    if (d == null)
+      push({ key: 'transit', reason: 'public transport not surveyed', relaxable: true,
+        dim: 'amenities', miss: 0.5, value: () => 'not surveyed here', limit: () => `${f.maxTransitKm} km` });
+    else if (d > f.maxTransitKm)
+      push({ key: 'transit', reason: 'no public transport nearby', relaxable: true,
+        dim: 'amenities', miss: (d - f.maxTransitKm) / Math.max(f.maxTransitKm, 3),
+        value: () => `${r1(d)} km to the nearest`, limit: () => `${f.maxTransitKm} km` });
+  }
+  if (f.maxTrainKm != null && (t.trainKm == null || t.trainKm > f.maxTrainKm))
+    push({ key: 'train', reason: 'no station nearby', relaxable: true, dim: 'amenities',
+      miss: t.trainKm == null ? 0.5 : (t.trainKm - f.maxTrainKm) / Math.max(f.maxTrainKm, 5),
+      value: () => t.trainKm == null ? 'not surveyed here' : `${r1(t.trainKm)} km to a station`,
+      limit: () => `${f.maxTrainKm} km` });
+  // A null here means "not measured", which must not fail the filter -- only a
+  // measured value below the bar does.
+  // Nullable fields are copied into constants first: narrowing does not
+  // follow them into the lazy closures below.
+  const net = t.netDownMbps;
+  if (f.minNetMbps > 0 && net != null && t.netTests >= 20 && net < f.minNetMbps)
+    push({ key: 'net', reason: 'broadband too slow', relaxable: true, dim: 'internet',
+      miss: (f.minNetMbps - net) / f.minNetMbps,
+      value: () => `${net < 100 ? r1(net) : Math.round(net)} Mbps`,
+      limit: () => `${f.minNetMbps} Mbps` });
+  const pm = t.pm25;
+  if (pm != null && pm > f.maxPm25)
+    push({ key: 'air', reason: 'air too polluted', relaxable: true, dim: 'cleanAir',
+      miss: (pm - f.maxPm25) / f.maxPm25, value: () => `PM2.5 ${r1(pm)}`,
+      limit: () => `${f.maxPm25}` });
+  if (t.costIndex != null && t.costIndex > f.maxCostIndex)
+    push({ key: 'cost', reason: 'too expensive to live in', relaxable: true, dim: 'livingCost',
+      miss: (t.costIndex - f.maxCostIndex) / f.maxCostIndex, value: () => `index ${t.costIndex}`,
+      limit: () => `${f.maxCostIndex}` });
+  if (t.pop < f.minPop)
+    push({ key: 'popMin', reason: 'too small', relaxable: true,
+      miss: (f.minPop - t.pop) / f.minPop, value: () => `${t.pop.toLocaleString()} people`,
+      limit: () => f.minPop.toLocaleString() });
+  // The slider's top notch reads "any", so it has to mean any. It used to cap
+  // at five million, which quietly excluded Tokyo, Seoul, Bogota and Sao Paulo
+  // from a search the user believed was unbounded.
+  if (f.maxPop < POP_ANY && t.pop > f.maxPop)
+    push({ key: 'popMax', reason: 'too large', relaxable: true,
+      miss: (t.pop - f.maxPop) / f.maxPop, value: () => `${t.pop.toLocaleString()} people`,
+      limit: () => f.maxPop.toLocaleString() });
+  if (f.maxTzDiff != null && env.tzGap) {
+    const gap = env.tzGap(t);
+    if (gap != null && gap > f.maxTzDiff)
+      push({ key: 'tz', reason: 'too many hours from your clock', relaxable: true,
+        miss: gap - f.maxTzDiff, value: () => `${r1(gap)} h from your clock`,
+        limit: () => `${f.maxTzDiff} h` });
+  }
+  if (f.minWinterDaylight > 0 && env.winterDaylight) {
+    const h = env.winterDaylight(t);
+    if (h < f.minWinterDaylight)
+      push({ key: 'daylight', reason: 'winter days too short', relaxable: true,
+        miss: f.minWinterDaylight - h, value: () => `${r1(h)} h of daylight in midwinter`,
+        limit: () => `${f.minWinterDaylight} h` });
+  }
+  if (f.maxHomeFlightH != null && env.homeFlightH) {
+    const h = env.homeFlightH(t);
+    if (h != null && h > f.maxHomeFlightH)
+      push({ key: 'homeFlight', reason: 'too far from home', relaxable: true,
+        miss: (h - f.maxHomeFlightH) / Math.max(f.maxHomeFlightH, 1),
+        value: () => `about ${r1(h)} h flying`, limit: () => `${f.maxHomeFlightH} h` });
+  }
+  const hom = t.homicideRate;
+  if (f.maxHomicide < SAFETY_ANY && hom != null && hom > f.maxHomicide)
+    push({ key: 'homicide', reason: 'homicide rate too high', relaxable: true, dim: 'safety',
+      miss: (hom - f.maxHomicide) / f.maxHomicide,
+      value: () => `${r1(hom)} per 100,000`, limit: () => `${f.maxHomicide}` });
+
+  // Where you are willing to live. Never forgiven.
+  if (f.ownership.length && !f.ownership.includes(t.ownership))
+    push({ key: 'ownership', reason: 'cannot buy there', relaxable: false, miss: 0 });
+  if (f.freeMovementOnly && t.residence !== 'free')
+    push({ key: 'visa', reason: 'would need a visa', relaxable: false, miss: 0 });
+  if (f.continents.length && !f.continents.includes(t.continent))
+    push({ key: 'continent', reason: 'outside chosen continents', relaxable: false, miss: 0 });
+  if (f.countries.length && !f.countries.includes(t.country))
+    push({ key: 'country', reason: 'outside chosen countries', relaxable: false, miss: 0 });
+  if (f.regions.length && !f.regions.includes(t.ccaa))
+    push({ key: 'region', reason: 'outside chosen regions', relaxable: false, miss: 0 });
+  if (f.requireObservedPrice && t.priceSource !== 'observed')
+    push({ key: 'observedPrice', reason: 'price is estimated', relaxable: false, miss: 0 });
+  if (f.noPetQuarantine && env.rules?.[t.country]?.pets === 'quarantine')
+    push({ key: 'petQuarantine', reason: 'quarantines arriving pets', relaxable: false, miss: 0 });
+  return out;
+}
+
+/**
+ * Hard filters. Returns null if the town passes, or the first reason it fails.
+ *
+ * Deliberately a separate short-circuiting pass rather than `failures()[0]`:
+ * this runs for every place on every keystroke, and most places fail early.
+ * The two must agree on order, which the tests check.
+ */
+export function rejectReason(t: Town, f: Filters, env: FilterEnv = {}): string | null {
   if (priceFor(t, f.minM2) > f.budget) return 'over budget';
   if (t.daysOver30 > f.maxDaysOver30) return 'too many hot days';
   if (t.tropicalNights > f.maxTropicalNights) return 'too many warm nights';
@@ -324,27 +634,39 @@ export function rejectReason(t: Town, f: Filters): string | null {
   if (t.city100kKm > f.maxCityKm) return 'city too far';
   if (f.maxTransitKm != null) {
     const d = transitKm(t);
-    if (d == null || d > f.maxTransitKm) return 'no public transport nearby';
+    // Unknown is excluded too, since the filter asks for transport it cannot
+    // confirm, but it says so rather than claiming there is none.
+    if (d == null) return 'public transport not surveyed';
+    if (d > f.maxTransitKm) return 'no public transport nearby';
   }
   if (f.maxTrainKm != null && (t.trainKm == null || t.trainKm > f.maxTrainKm))
     return 'no station nearby';
-  // A null here means "not measured", which must not fail the filter -- only a
-  // measured value below the bar does.
   if (f.minNetMbps > 0 && t.netDownMbps != null && t.netTests >= 20
       && t.netDownMbps < f.minNetMbps) return 'broadband too slow';
   if (t.pm25 != null && t.pm25 > f.maxPm25) return 'air too polluted';
   if (t.costIndex != null && t.costIndex > f.maxCostIndex) return 'too expensive to live in';
   if (t.pop < f.minPop) return 'too small';
-  // The slider's top notch reads "any", so it has to mean any. It used to cap
-  // at five million, which quietly excluded Tokyo, Seoul, Bogota and Sao Paulo
-  // from a search the user believed was unbounded.
   if (f.maxPop < POP_ANY && t.pop > f.maxPop) return 'too large';
+  if (f.maxTzDiff != null && env.tzGap) {
+    const gap = env.tzGap(t);
+    if (gap != null && gap > f.maxTzDiff) return 'too many hours from your clock';
+  }
+  if (f.minWinterDaylight > 0 && env.winterDaylight
+      && env.winterDaylight(t) < f.minWinterDaylight) return 'winter days too short';
+  if (f.maxHomeFlightH != null && env.homeFlightH) {
+    const h = env.homeFlightH(t);
+    if (h != null && h > f.maxHomeFlightH) return 'too far from home';
+  }
+  if (f.maxHomicide < SAFETY_ANY && t.homicideRate != null && t.homicideRate > f.maxHomicide)
+    return 'homicide rate too high';
   if (f.ownership.length && !f.ownership.includes(t.ownership)) return 'cannot buy there';
   if (f.freeMovementOnly && t.residence !== 'free') return 'would need a visa';
   if (f.continents.length && !f.continents.includes(t.continent)) return 'outside chosen continents';
   if (f.countries.length && !f.countries.includes(t.country)) return 'outside chosen countries';
   if (f.regions.length && !f.regions.includes(t.ccaa)) return 'outside chosen regions';
   if (f.requireObservedPrice && t.priceSource !== 'observed') return 'price is estimated';
+  if (f.noPetQuarantine && env.rules?.[t.country]?.pets === 'quarantine')
+    return 'quarantines arriving pets';
   return null;
 }
 
@@ -353,24 +675,40 @@ export interface Ranked {
   score: number;
   breakdown: Breakdown;
   gem?: number;
+  /**
+   * Set only on near misses: what the place would score if the things holding
+   * it back were forgiven, and what those things are.
+   */
+  forgiven?: number;
+  held?: HeldBack[];
+  /**
+   * Opened from a search although a filter keeps it out and it is not a near
+   * miss either. Shown anyway, with every reason, because "why is my town not
+   * in the list" deserves a full answer rather than silence.
+   */
+  excluded?: boolean;
 }
 
-export function rank(towns: Town[], f: Filters, w: Weights, ctx: ScoreContext): Ranked[] {
+/** One reason a near miss is not in the main list: a filter, or a dimension. */
+export interface HeldBack {
+  /** A filter it fails, with the numbers... */
+  failure?: Failure;
+  /** ...or a dimension so weak it drags an otherwise excellent score down. */
+  dim?: keyof Breakdown;
+  /** 0..1 value of that dimension, for the weak-dimension case. */
+  value?: number;
+}
+
+export function rank(
+  towns: Town[], f: Filters, w: Weights, ctx: ScoreContext, env: FilterEnv = {},
+): Ranked[] {
   const out: Ranked[] = [];
   for (const t of towns) {
-    if (rejectReason(t, f)) continue;
+    if (rejectReason(t, f, env)) continue;
     // breakdown is computed once and reused rather than recomputed inside
-    // score(); at 22k towns per keystroke that doubling is worth avoiding.
+    // score(); at 30k towns per keystroke that doubling is worth avoiding.
     const b = breakdown(t, f, ctx);
-    let total = 0;
-    let wsum = 0;
-    for (const k of Object.keys(b) as Array<keyof Breakdown>) {
-      const v = b[k];
-      if (v == null) continue;
-      total += (w[k] ?? 0) * v;
-      wsum += w[k] ?? 0;
-    }
-    out.push({ town: t, score: wsum === 0 ? 0 : (100 * total) / wsum, breakdown: b });
+    out.push({ town: t, score: weightedScore(b, w), breakdown: b });
   }
   out.sort((a, b) => b.score - a.score);
   return out;

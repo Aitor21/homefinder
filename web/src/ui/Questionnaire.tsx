@@ -156,7 +156,7 @@ export default function Questionnaire({ towns, home, initial, onApply, onClose }
                     <th>Rejected</th>
                     <th>days &gt;30°</th>
                     <th>nights &gt;20°</th>
-                    <th>Aug high</th>
+                    <th>peak high</th>
                     <th>humidity</th>
                   </tr>
                 </thead>
@@ -205,12 +205,12 @@ export default function Questionnaire({ towns, home, initial, onApply, onClose }
               options={[
                 {
                   value: 'clearly' as Strictness,
-                  label: 'Clearly cooler',
+                  label: a.want === 'warmer' ? 'Clearly warmer' : 'Clearly cooler',
                   hint: `${strictnessPreview.clearly.n} towns · e.g. ${strictnessPreview.clearly.example}`,
                 },
                 {
                   value: 'much' as Strictness,
-                  label: 'Much cooler',
+                  label: a.want === 'warmer' ? 'Much warmer' : 'Much cooler',
                   hint: `${strictnessPreview.much.n} towns · e.g. ${strictnessPreview.much.example}`,
                 },
                 {
@@ -231,22 +231,38 @@ export default function Questionnaire({ towns, home, initial, onApply, onClose }
                     : `${profile.filters.summerTarget} °C`}
                 </b>
               </div>
-              <div>
-                <span>Days above 30 °C</span>
-                <b>≤ {profile.filters.maxDaysOver30}</b>
-              </div>
-              <div>
-                <span>Nights above 20 °C</span>
-                <b>≤ {profile.filters.maxTropicalNights}</b>
-              </div>
-              <div>
-                <span>Hottest month, daily high</span>
-                <b>≤ {profile.filters.maxHotTmax} °C</b>
-              </div>
+              {a.want === 'warmer' ? (
+                <>
+                  <div>
+                    <span>Hottest month, daily high</span>
+                    <b>≥ {profile.filters.minHotTmax} °C</b>
+                  </div>
+                  <div>
+                    <span>Winter nights</span>
+                    <b>≥ {profile.filters.minWinterTmin} °C</b>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div>
+                    <span>Days above 30 °C</span>
+                    <b>≤ {profile.filters.maxDaysOver30}</b>
+                  </div>
+                  <div>
+                    <span>Nights above 20 °C</span>
+                    <b>≤ {profile.filters.maxTropicalNights}</b>
+                  </div>
+                  <div>
+                    <span>Hottest month, daily high</span>
+                    <b>≤ {profile.filters.maxHotTmax} °C</b>
+                  </div>
+                </>
+              )}
             </div>
             <p className="hintline">
-              The strictest setting pushes inland, uphill and north. The coolest summers are not
-              on any coast but above 1,000 m or past 50° latitude, where nights fall away sharply, the Carpathians, the Alps, Hokkaido, the Cantabrian interior.
+              {a.want === 'warmer'
+                ? 'The strictest setting pushes toward the subtropics and the coast, where winters stay mild as well.'
+                : 'The strictest setting pushes inland, uphill and north. The coolest summers are not on any coast but above 1,000 m or past 50° latitude, where nights fall away sharply: the Carpathians, the Alps, Hokkaido, the Cantabrian interior.'}
             </p>
           </div>
         )}
@@ -279,7 +295,7 @@ export default function Questionnaire({ towns, home, initial, onApply, onClose }
                 { value: 'any' as const, label: 'Anywhere', hint: 'No size constraint' },
                 { value: 'city' as const, label: 'In a city', hint: '50,000+ people' },
                 { value: 'edge' as const, label: 'Edge of a city', hint: 'Within 30 km of one' },
-                { value: 'town' as const, label: 'A small town', hint: '2,000–60,000' },
+                { value: 'town' as const, label: 'A small town', hint: '2,000 to 60,000' },
               ]}
               value={a.placeSize}
               onChange={(v) => set({ placeSize: v })}
@@ -293,16 +309,17 @@ export default function Questionnaire({ towns, home, initial, onApply, onClose }
             <h4>How much do you fly?</h4>
             <Pick
               options={[
-                { value: 'often' as const, label: 'Often', hint: 'Hub within 90 km' },
-                { value: 'sometimes' as const, label: 'Now and then', hint: 'Hub within 170 km' },
-                { value: 'rarely' as const, label: 'Rarely', hint: 'Any airport will do' },
+                { value: 'often' as const, label: 'Often', hint: 'Hub within a 45-minute drive' },
+                { value: 'sometimes' as const, label: 'Now and then', hint: 'Hub within 1 h 30' },
+                { value: 'rarely' as const, label: 'Rarely', hint: 'Any airport within 2 h' },
               ]}
               value={a.flying}
               onChange={(v) => set({ flying: v })}
             />
             <p className="hintline">
-              "Hub" means 2M+ passengers a year, enough for real international routes, which
-              includes Bilbao, Santiago and Girona but not Santander or Asturias.
+              "Hub" means 2M+ passengers a year, enough for real international routes: Bilbao,
+              Porto and Lyon qualify, Santander does not. If an airport is the only thing wrong
+              with a place, the Near misses view will still show it to you.
             </p>
 
             <h4>Winter, rain and grey skies?</h4>
@@ -360,7 +377,9 @@ export default function Questionnaire({ towns, home, initial, onApply, onClose }
                 { value: 'train' as Essential, label: 'Train station nearby' },
                 { value: 'coast' as Essential, label: 'Near the coast' },
                 { value: 'mountains' as Essential, label: 'Mountains nearby' },
-                { value: 'bike' as Essential, label: 'Cycling infrastructure' },
+                { value: 'nature' as Essential, label: 'Protected nature nearby' },
+                { value: 'ski' as Essential, label: 'Ski slopes within a day trip' },
+                { value: 'dog' as Essential, label: 'Moving with a dog' },
                 { value: 'observed-price' as Essential, label: 'Officially priced only' },
               ]}
               value={a.essentials}
@@ -373,7 +392,7 @@ export default function Questionnaire({ towns, home, initial, onApply, onClose }
         {step === 5 && (
           <div className="wizbody">
             <div className="bigcount">
-              <b>{matches.toLocaleString()}</b> municipalities match
+              <b>{matches.toLocaleString()}</b> places match
             </div>
             {matches === 0 && (
               <div className="note">
@@ -388,9 +407,18 @@ export default function Questionnaire({ towns, home, initial, onApply, onClose }
               ))}
             </ul>
             <div className="derived">
-              <div><span>Days above 30 °C</span><b>≤ {profile.filters.maxDaysOver30}</b></div>
-              <div><span>Nights above 20 °C</span><b>≤ {profile.filters.maxTropicalNights}</b></div>
-              <div><span>Hottest month</span><b>≤ {profile.filters.maxHotTmax} °C</b></div>
+              {a.want === 'warmer' ? (
+                <>
+                  <div><span>Hottest month</span><b>≥ {profile.filters.minHotTmax} °C</b></div>
+                  <div><span>Winter nights</span><b>≥ {profile.filters.minWinterTmin} °C</b></div>
+                </>
+              ) : (
+                <>
+                  <div><span>Days above 30 °C</span><b>≤ {profile.filters.maxDaysOver30}</b></div>
+                  <div><span>Nights above 20 °C</span><b>≤ {profile.filters.maxTropicalNights}</b></div>
+                  <div><span>Hottest month</span><b>≤ {profile.filters.maxHotTmax} °C</b></div>
+                </>
+              )}
               <div><span>Drive to a hub airport</span><b>≤ {profile.filters.maxHubMin} min</b></div>
               <div><span>City of 100k</span><b>≤ {profile.filters.maxCityKm} km</b></div>
               <div><span>Budget</span><b>€{profile.filters.budget.toLocaleString()} / {profile.filters.minM2} m²</b></div>

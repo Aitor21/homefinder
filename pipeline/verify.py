@@ -76,12 +76,38 @@ def main():
         ("ES-09059", "Burgos", lambda t: t["winterTmin"] < 4, "cold winters"),
         ("ES-48020", "Bilbao", lambda t: t["hubKm"] < 30, "hub airport close"),
     ]
+    # The protected-nature layer once missed every park mapped as a relation,
+    # which is most of them, and put Madrid 115 km from anything protected.
+    checks += [
+        ("ES-28079", "Madrid", lambda t: t.get("parkKm") is not None and t["parkKm"] < 70,
+         "protected nature within ~70 km (Guadarrama)"),
+        ("ES-48020", "Bilbao", lambda t: t.get("parkKm") is not None and t["parkKm"] < 40,
+         "protected nature within ~40 km (Gorbeia, Urkiola)"),
+        ("ES-48020", "Bilbao", lambda t: t.get("vetKm") is not None and t["vetKm"] < 5,
+         "a vet in the city"),
+        ("ES-48020", "Bilbao", lambda t: t.get("tz") == "Europe/Madrid", "time zone carried"),
+    ]
     for ine, label, fn, desc in checks:
         t = by.get(ine)
         if not t:
             problems.append(f"{label} ({ine}) missing from dataset")
         elif not fn(t):
             problems.append(f"{label} failed check: {desc}")
+
+    # --- worldwide layers --------------------------------------------------------
+    # Services used to be Spain only; anything under 80% now means boxes failed.
+    for field in ("supermarketKm", "pharmacyKm", "hospitalKm", "vetKm"):
+        have = sum(1 for t in towns if t.get(field) is not None)
+        print(f"{field}: {have}/{len(towns)} places ({100 * have / len(towns):.0f}%)")
+        if have < 0.8 * len(towns):
+            problems.append(f"{field} resolved for only {have}/{len(towns)} places")
+    # A fill value read as data: 65,535 kJ/m2 of sun is three Saharas.
+    solar_bad = [t["name"] for t in towns if (t.get("solarAnnual") or 0) > 30000]
+    if solar_bad:
+        problems.append(f"solar fill values leaked through for {solar_bad[:6]}")
+    no_tz = sum(1 for t in towns if not t.get("tz"))
+    if no_tz:
+        problems.append(f"{no_tz} places have no time zone")
 
     # --- the actual search -----------------------------------------------------
     madrid = by["ES-28079"]

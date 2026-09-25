@@ -29,11 +29,11 @@ STAGES = ("climate", "access", "amenities", "terrain", "prices",
           "airquality", "internet", "costs")
 
 PLACE_FIELDS = ("id", "name", "country", "countryName", "continent", "ownership",
-                "residence", "province", "ccaa", "lat", "lon", "pop", "elev")
+                "residence", "province", "ccaa", "lat", "lon", "pop", "elev", "tz")
 
 # Few distinct values, repeated 18k times: worth an index table.
 DICT_FIELDS = ("country", "countryName", "continent", "ownership", "residence",
-               "province", "ccaa", "priceSource",
+               "province", "ccaa", "priceSource", "tz",
                "source", "airportName", "hubName", "city100kName", "priceQuarter")
 
 
@@ -141,12 +141,19 @@ def run():
             "sources": {
                 "climate": "WorldClim 2.1 (2.5 arcmin) recalibrated to 2020-2024 ERA5",
                 "geography": "GeoNames (ADM3 for Spain, cities5000 elsewhere)",
-                "amenities": "OpenStreetMap via Overpass -- rail Europe-wide, rest Spain only",
+                "amenities": "OpenStreetMap via Overpass: transport, shops, pharmacies, "
+                             "hospitals, vets and dog parks worldwide; schools and cycleways Spain only",
+                "nature": "OpenStreetMap protected areas (IUCN 1-5), national parks and "
+                          "nature reserves, measured to the edge",
+                "safety": "UNODC intentional homicide rates via the World Bank, national",
+                "pets": "National veterinary authorities, checked Sep 2026; for a pet travelling from the EU",
+                "timeZones": "GeoNames IANA zones; offsets computed in the browser",
                 "airports": "OurAirports + published traffic figures",
                 "prices": "MIVAU quarterly series for Spain; national averages elsewhere",
                 "ownership": "Government and law-firm sources, checked Sep 2026; indicative, not legal advice",
                 "developers": "Company sites and trade press, checked Sep 2026; every URL fetched",
-                "airQuality": "CAMS reanalysis via Open-Meteo, four-month seasonal sample",
+                "airQuality": "CAMS reanalysis via Open-Meteo, four sample months; a month "
+                              "a quota-limited run missed is estimated from neighbouring cells",
                 "internet": "Ookla open Speedtest tiles, fixed broadband, 2025 Q1",
                 "costOfLiving": "World Bank ICP price levels; energy from degree days",
             },

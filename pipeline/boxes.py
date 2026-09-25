@@ -46,6 +46,19 @@ WORLD = {
 }
 
 
+# Europe in quarters, for the DENSE layers only. Beaches and stations come back
+# from the whole-continent box, but a continent of supermarkets or pharmacies is
+# a couple of hundred thousand features and the public servers give up before
+# answering. Quartered, each piece is a query they finish. The union is exactly
+# the EU box, so the surveyed footprint does not change.
+EU_TILES = {
+    "eu_sw": "34.0,-26.0,48.0,5.0",    # Iberia, southern France, Maghreb coast
+    "eu_se": "34.0,5.0,48.0,35.0",     # Italy, the Balkans, Greece, western Turkey
+    "eu_nw": "48.0,-26.0,72.0,5.0",    # Britain, Ireland, northern France, Iceland
+    "eu_ne": "48.0,5.0,72.0,35.0",     # Germany, Poland, the Nordics, the Baltics
+}
+
+
 def worldwide() -> dict[str, str]:
     """Every box, keyed by a stable name used in the fetch cache key.
 
@@ -53,6 +66,11 @@ def worldwide() -> dict[str, str]:
     away its cached response, and some of these take minutes to fetch.
     """
     return {"eu": EU, **ASIA, **WORLD}
+
+
+def dense_worldwide() -> dict[str, str]:
+    """The same footprint as `worldwide`, with Europe quartered."""
+    return {**EU_TILES, **ASIA, **WORLD}
 
 
 def all_boxes() -> list[str]:

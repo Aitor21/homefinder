@@ -132,6 +132,11 @@ def spanish_rows(admin1):
                 "lon": round(float(p[5]), 5),
                 "pop": pop,
                 "elev": _elev(p[15], p[16]),
+                # IANA zone, e.g. "Europe/Madrid". The browser turns it into an
+                # offset from the user's own clock, which is the number a remote
+                # worker actually cares about and one no stored offset could be,
+                # since daylight saving moves on different dates in different zones.
+                "tz": p[17] or None,
             }
         )
     return rows
@@ -182,6 +187,7 @@ def world_rows(admin1):
                 "lon": round(float(p[5]), 5),
                 "pop": pop,
                 "elev": _elev(p[15], p[16]),
+                "tz": p[17] or None,
             }
         )
     return rows

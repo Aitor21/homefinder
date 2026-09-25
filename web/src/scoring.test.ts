@@ -281,9 +281,10 @@ describe('public transport', () => {
     });
     expect(transitKm(unsurveyed)).toBeNull();
     // And a place with no known transport must not silently pass a filter
-    // that demands some.
+    // that demands some. It is excluded, but it says why honestly: nobody
+    // looked, which is not the same as there being nothing there.
     const f = { ...DEFAULT_FILTERS, maxTransitKm: 5 };
-    expect(rejectReason(unsurveyed, f)).toBe('no public transport nearby');
+    expect(rejectReason(unsurveyed, f)).toBe('public transport not surveyed');
   });
 
   it('filters on any mode, not just rail', () => {

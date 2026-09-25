@@ -234,3 +234,29 @@ describe('cooling load', () => {
     expect(hotMonths(MADRID)).toBeGreaterThan(hotMonths(BILBAO));
   });
 });
+
+describe('essentials that switch dimensions on', () => {
+  it('weights up everything a dog needs when someone is moving with one', () => {
+    const p = buildProfile(answers({ essentials: ['dog'] }), CORPUS);
+    expect(p.weights.pets).toBeGreaterThan(0);
+    expect(p.notes.some((n) => /quarantine/.test(n))).toBe(true);
+    // It explains the pet quarantine filter but does not tick it on the
+    // user's behalf: that is a choice about which countries to consider.
+    expect(p.filters.noPetQuarantine).toBe(false);
+  });
+
+  it('switches ski and nature on only when asked', () => {
+    const none = buildProfile(answers(), CORPUS).weights;
+    expect(none.ski).toBe(0);
+    const both = buildProfile(answers({ essentials: ['ski', 'nature'] }), CORPUS).weights;
+    expect(both.ski).toBeGreaterThan(0);
+    expect(both.nature).toBeGreaterThan(none.nature);
+  });
+
+  it('ignores answers saved by an older version of the questionnaire', () => {
+    // "bike" and "hospital" were retired because neither measured anything;
+    // a returning user's saved answers must still load cleanly.
+    const p = buildProfile(answers({ essentials: ['bike', 'hospital'] }), CORPUS);
+    expect(p.weights).toEqual(buildProfile(answers(), CORPUS).weights);
+  });
+});

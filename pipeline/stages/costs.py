@@ -42,6 +42,12 @@ WB = ("https://api.worldbank.org/v2/country/all/indicator/{}"
       "?format=json&per_page=20000&date=2015:2024")
 PPP_PRIVATE = "PA.NUS.PRVT.PP"   # PPP conversion factor, private consumption
 FX_RATE = "PA.NUS.FCRF"          # official market exchange rate
+# Intentional homicides per 100,000 people, UNODC figures as republished by the
+# World Bank. The one crime statistic that is comparable between countries:
+# a body is counted the same way everywhere, where theft and assault depend on
+# what people bother to report. National, so it says nothing about which side
+# of a city is safer, and the UI says so.
+HOMICIDE = "VC.IHR.PSRC.P5"
 
 BASE_COUNTRY = "ES"              # index rebased so Spain = 100
 
@@ -127,6 +133,26 @@ TAX = {
 }
 
 
+def _wb_latest(indicator):
+    """Most recent non-null value per ISO-2 country, 2015 to 2024."""
+    raw = c.fetch(WB.format(indicator), cache_key=f"wb_{indicator}_v2")
+    doc = json.loads(raw)
+    if len(doc) < 2 or not doc[1]:
+        raise SystemExit(f"World Bank returned no data for {indicator}: {doc[0]}")
+    page = doc[0]
+    if page.get("pages", 1) > 1:
+        c.warn(f"{indicator}: {page['pages']} pages, only the first was read")
+    out = {}
+    for row in doc[1]:
+        v, iso = row.get("value"), row["country"]["id"]
+        if v is None:
+            continue
+        year = int(row["date"])
+        if iso not in out or year > out[iso][0]:
+            out[iso] = (year, float(v))
+    return out
+
+
 def world_bank_price_levels():
     """PPP conversion factor / market exchange rate, per ISO-2 country code."""
     def latest(indicator):
@@ -172,6 +198,8 @@ def run():
     climate = c.read_stage("climate")
 
     level = world_bank_price_levels()
+    homicide = _wb_latest(HOMICIDE)
+    c.log(f"homicide rates for {len(homicide)} countries", 1)
     base = level.get(BASE_COUNTRY)
     if not base:
         raise SystemExit("no price level for the base country; cannot rebase")
@@ -205,6 +233,8 @@ def run():
             "electricityEurKwh": elec,
             "incomeTaxTop": tax[0] if tax else None,
             "vat": tax[1] if tax else None,
+            "homicideRate": round(homicide[cc][1], 1) if cc in homicide else None,
+            "homicideYear": homicide[cc][0] if cc in homicide else None,
         }
 
     if missing_level:
@@ -224,7 +254,11 @@ def run():
         r = rows.get(pid)
         if r:
             c.log(f"  {label:<9} cost={str(r['costIndex']):>4}  HDD={r['hdd']:>5}  CDD={r['cdd']:>4}  "
-                  f"energy={str(r['energyEurYear']):>5} EUR/yr  tax={r['incomeTaxTop']}% VAT={r['vat']}%", 1)
+                  f"energy={str(r['energyEurYear']):>5} EUR/yr  tax={r['incomeTaxTop']}% VAT={r['vat']}%  "
+                  f"homicide={r['homicideRate']}/100k ({r['homicideYear']})", 1)
+    missing_h = sorted({p["country"] for p in places} - set(homicide))
+    if missing_h:
+        c.warn(f"no homicide rate for: {', '.join(missing_h)}")
     vals = [r["costIndex"] for r in rows.values() if r["costIndex"]]
     if vals:
         c.log(f"  cost index across {len(vals):,} places: "

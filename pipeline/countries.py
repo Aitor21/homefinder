@@ -390,6 +390,111 @@ def pop_floor(cc: str) -> int:
     return WORLD_POP_FLOOR[ownership(cc)]
 
 
+# --------------------------------------------------------------------------
+# Bringing a dog or cat in, for an animal travelling FROM THE EU.
+#
+# The regimes, from easiest to hardest:
+#   passport     EU pet passport rules: microchip, rabies vaccine at least 21
+#                days old, and the passport. Nothing else.
+#   paperwork    microchip, rabies vaccine and an official health certificate,
+#                sometimes an import permit. No blood test, no quarantine.
+#   titer        a rabies antibody blood test at an approved lab first, often
+#                with a wait of months after it. Little or no quarantine if done
+#                right, which is the whole point of planning it.
+#   quarantine   a stay in a quarantine facility on arrival, on top of the
+#                blood test and the permit. The animal is not with you.
+#
+# Why this is worth a field: for someone moving with a dog it decides whether a
+# country is a six-week project or a nine-month one, and Australia, New Zealand
+# and Iceland will separate you from the animal regardless of how well you plan.
+# Checked September 2026 against the national veterinary authorities and the
+# USDA's country pages. Rules also depend on where the animal comes FROM, and
+# this table only answers for the EU; the UI says so. A country missing here
+# was not verified and is shown as "check", never guessed.
+# --------------------------------------------------------------------------
+
+_TAPEWORM = "Dogs also need a tapeworm treatment 1 to 5 days before arrival."
+
+PETS: dict[str, tuple[str, str]] = {
+    **{cc: ("passport", "Moving within the EU and EFTA: the EU pet passport is enough.")
+       for cc in ("AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FR", "DE", "GR",
+                  "HU", "IT", "LV", "LT", "LU", "NL", "PL", "PT", "RO", "SK", "SI",
+                  "ES", "SE", "LI", "CH", "AD")},
+    "FI": ("passport", "EU pet passport rules. " + _TAPEWORM),
+    "IE": ("passport", "EU pet passport rules. " + _TAPEWORM),
+    "MT": ("passport", "EU pet passport rules. " + _TAPEWORM),
+    "NO": ("passport", "EU pet passport rules. " + _TAPEWORM),
+    "GB": ("passport", "An EU-issued pet passport is still accepted in Great Britain. "
+                       + _TAPEWORM),
+    "IS": ("quarantine", "Import permit, a rabies antibody test and at least 14 days in "
+                         "quarantine on arrival, even from the EU."),
+    # Europe outside the EU.
+    **{cc: ("paperwork", "From the EU: microchip, rabies vaccine and a health certificate "
+                         "or EU pet passport.")
+       for cc in ("RS", "ME", "AL", "BA", "MK", "MD")},
+    # Asia.
+    "JP": ("titer", "A rabies antibody test, then a 180-day wait before arrival and 40 "
+                    "days' advance notice. Done right the airport check takes under 12 "
+                    "hours; done wrong it is up to 180 days of quarantine."),
+    "KR": ("titer", "A rabies antibody test within the 24 months before arrival for most "
+                    "EU countries (a few, such as Germany and Portugal, are exempt). No "
+                    "quarantine if the papers are in order."),
+    "TW": ("quarantine", "A rabies antibody test at least 180 days before shipment, then 7 "
+                         "days of quarantine on arrival."),
+    "SG": ("titer", "A rabies antibody test at least 90 days before export. Depending on "
+                    "the origin's risk schedule, up to 10 days of home quarantine."),
+    "MY": ("quarantine", "Import permit, a rabies antibody test and at least 7 days in a "
+                         "government quarantine station (since December 2024)."),
+    "CN": ("titer", "A rabies antibody test from a lab approved by China Customs, or 30 "
+                    "days of quarantine. A handful of rabies-free origins are exempt."),
+    "ID": ("titer", "Import permit and a rabies antibody test. Bali does not allow dogs "
+                    "to be imported at all."),
+    "IL": ("titer", "A rabies antibody test for dogs from most countries, plus a health "
+                    "certificate issued within 10 days of arrival. No quarantine."),
+    "AE": ("paperwork", "Import permit from the Ministry of Climate Change and Environment. "
+                        "Dogs from higher-risk countries also need a rabies antibody test."),
+    "TH": ("paperwork", "Import permit and a health certificate; no blood test."),
+    "PH": ("paperwork", "Import permit from the Bureau of Animal Industry before travel; "
+                        "no blood test."),
+    "VN": ("paperwork", "Health certificate and rabies vaccination; no blood test."),
+    "KH": ("paperwork", "Health certificate and rabies vaccination; no blood test."),
+    "IN": ("paperwork", "Health certificate, and a customs clearance certificate for pets "
+                        "that come with a relocation."),
+    **{cc: ("paperwork", "Microchip, rabies vaccine and an official health certificate.")
+       for cc in ("TR", "GE", "AM", "AZ", "KZ", "KG", "UZ")},
+    # The Americas.
+    "US": ("paperwork", "From the EU: microchip, at least 6 months old, and a CDC Dog "
+                        "Import Form. Hawaii runs its own rules, with a blood test."),
+    "PA": ("paperwork", "Health certificate and rabies vaccine, then 40 days of home "
+                        "quarantine: the dog stays with you and is monitored."),
+    "JM": ("titer", "Import permit and a rabies antibody test 3 to 12 months before "
+                    "arrival; the inspector can order up to 14 days of quarantine."),
+    "BB": ("titer", "Import permit and a rabies antibody test, then a 90-day wait for "
+                    "most origins. No quarantine if everything is in order."),
+    "TT": ("titer", "Import permit and a rabies antibody test for Spain and most of the "
+                    "EU; a few rabies-free countries are exempt."),
+    **{cc: ("paperwork", "Microchip, rabies vaccine and an official health certificate; "
+                         "some countries also want it legalised or a permit issued first.")
+       for cc in ("CA", "MX", "BR", "AR", "CL", "UY", "CO", "PE", "EC", "PY", "BO",
+                  "CR", "GT", "BZ", "DO", "BS")},
+    # Oceania.
+    "AU": ("quarantine", "Import permit, a rabies antibody test and a 180-day wait, then at "
+                         "least 10 days at the Mickleham quarantine station (30 if the "
+                         "identity check before the blood test was missed)."),
+    "NZ": ("quarantine", "Import permit, a rabies antibody test and at least 10 days in an "
+                         "approved quarantine facility."),
+    # Africa.
+    "MU": ("quarantine", "Import permit months in advance, a rabies antibody test and 5 "
+                         "days of quarantine for dogs from Europe."),
+    "SC": ("quarantine", "Import permit and a rabies antibody test, then 14 days of "
+                         "quarantine even from rabies-free countries."),
+    **{cc: ("paperwork", "Import permit and an official health certificate.")
+       for cc in ("ZA", "NA", "BW", "KE", "TZ", "GH", "RW", "ET")},
+    **{cc: ("paperwork", "Microchip, rabies vaccine and an official health certificate.")
+       for cc in ("MA", "TN", "EG")},
+}
+
+
 def notes_table() -> dict[str, dict]:
     """Country facts for the UI, emitted once rather than per row."""
     return {
@@ -399,6 +504,9 @@ def notes_table() -> dict[str, dict]:
             "residence": v[2],
             "ownership": v[3],
             "note": v[4],
+            # None where not verified: the UI says "check" rather than guessing.
+            "pets": PETS[cc][0] if cc in PETS else None,
+            "petsNote": PETS[cc][1] if cc in PETS else None,
         }
         for cc, v in COUNTRIES.items()
     }

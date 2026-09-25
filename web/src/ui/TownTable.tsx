@@ -1,17 +1,24 @@
 import { useMemo, useState } from 'react';
 import type { Town } from '../types';
-import type { Ranked } from '../scoring';
+import type { HeldBack, Ranked } from '../scoring';
 import { bestMatch, hubDriveMin } from '../scoring';
 import { formatDrive } from '../travel';
 import { affinityScore, type Affinity, type Distribution } from '../affinity';
 import type { GemModel } from '../gems';
 import { discountPct } from '../gems';
 import { acIndexVs } from '../climate';
+import { rebaseCost } from '../home';
+import { tzGap } from '../clock';
+import { severity, wouldRank } from '../nearmiss';
 import { OWNERSHIP_LABEL } from '../types';
 import type { Mode } from '../App';
+import { heldLabel } from './labels';
 
 interface Props {
+  /** The rows to show: the ranking, the near misses or the gems. */
   ranked: Ranked[];
+  /** The ordinary ranking, for "would rank #n". */
+  base: Ranked[];
   /** Every town, filtered or not, so a search miss can explain itself. */
   all: Town[];
   /** Why a town was excluded, for the same reason. */
@@ -24,6 +31,12 @@ interface Props {
   refs: Town[];
   affinity: Affinity | null;
   dist: Distribution | null;
+  /** Home country's cost index, so the cost column reads home = 100. */
+  homeIndex: number | null;
+  /** The user's working clock, for the time-difference column. */
+  workTz: string | null;
+  /** Show the dog column: only once someone has said they care. */
+  showPets: boolean;
   selected: string | null;
   onSelect: (ine: string) => void;
 }
@@ -34,6 +47,9 @@ interface Ctx {
   refs: Town[];
   affinity: Affinity | null;
   dist: Distribution | null;
+  homeIndex: number | null;
+  workTz: string | null;
+  base: Ranked[];
 }
 
 type Col = {
@@ -46,7 +62,43 @@ type Col = {
 
 const n0 = (v: number) => Math.round(v).toLocaleString();
 
-const COLUMNS: Col[] = [
+function Bar({ v, gem }: { v: number; gem?: boolean }) {
+  return (
+    <div style={{ display: 'flex', gap: 6, alignItems: 'center', justifyContent: 'flex-end' }}>
+      <span className="bar">
+        <i style={{ width: `${Math.max(0, Math.min(100, v))}%`, ...(gem ? { background: 'var(--gem)' } : {}) }} />
+      </span>
+      <span>{v.toFixed(0)}</span>
+    </div>
+  );
+}
+
+function HeldChips({ held, town }: { held?: HeldBack[]; town: Town }) {
+  if (!held?.length) return null;
+  // When the nearest airport is also the hub, failing both limits is one fact
+  // about one drive, and two chips saying "1 h 42 to SCL" read as a glitch.
+  const air = held.find((h) => h.failure?.key === 'airport');
+  const hub = held.find((h) => h.failure?.key === 'hub');
+  const merge = air && hub && town.airportName === town.hubName;
+  const shown = merge ? held.filter((h) => h !== hub) : held;
+  return (
+    <span className="held">
+      {shown.map((h, i) => (
+        <span
+          key={i}
+          className={`chip ${h.failure ? severity(h === air && merge ? hub!.failure! : h.failure) : 'far'}`}
+          title={h.failure ? h.failure.reason : 'A dimension you weight, scoring far below the rest'}
+        >
+          {h === air && merge
+            ? `${air!.failure!.value} (limits ${air!.failure!.limit} and ${hub!.failure!.limit})`
+            : heldLabel(h)}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+const BASE_COLUMNS: Col[] = [
   { key: 'name', label: 'Town', get: (r) => r.town.name },
   { key: 'country', label: 'Country', get: (r) => r.town.countryName },
   {
@@ -71,14 +123,7 @@ const COLUMNS: Col[] = [
     key: 'score',
     label: 'Score',
     get: (r) => r.score,
-    render: (r) => (
-      <div style={{ display: 'flex', gap: 6, alignItems: 'center', justifyContent: 'flex-end' }}>
-        <span className="bar">
-          <i style={{ width: `${Math.min(100, r.score)}%` }} />
-        </span>
-        <span>{r.score.toFixed(0)}</span>
-      </div>
-    ),
+    render: (r) => <Bar v={r.score} />,
   },
   {
     key: 'gem',
@@ -131,6 +176,22 @@ const COLUMNS: Col[] = [
       ),
   },
   {
+    key: 'clock',
+    label: 'Clock',
+    title: 'Hours between local time here and your working clock (the larger of January and July)',
+    get: (r, c) => tzGap(r.town.tz, c.workTz)?.worst ?? 99,
+    render: (r, c) => {
+      const g = tzGap(r.town.tz, c.workTz);
+      if (!g) return 'n/a';
+      const h = Math.abs(g.jan) >= Math.abs(g.jul) ? g.jan : g.jul;
+      return (
+        <span className={g.worst <= 2 ? 'discount' : ''}>
+          {h === 0 ? '0' : `${h > 0 ? '+' : '−'}${Math.abs(h)}`}
+        </span>
+      );
+    },
+  },
+  {
     key: 'pm25',
     label: 'PM2.5',
     title: 'Annual mean fine particulates, µg/m³. WHO guideline 5, EU limit 25',
@@ -145,14 +206,12 @@ const COLUMNS: Col[] = [
   {
     key: 'cost',
     label: 'Cost',
-    title: 'World Bank price level for household consumption, Spain = 100',
+    title: 'World Bank price level for household consumption, 100 = where you say you are',
     get: (r) => r.town.costIndex ?? 999,
-    render: (r) =>
-      r.town.costIndex == null ? (
-        'n/a'
-      ) : (
-        <span className={r.town.costIndex <= 90 ? 'discount' : ''}>{r.town.costIndex}</span>
-      ),
+    render: (r, c) => {
+      const v = rebaseCost(r.town.costIndex, c.homeIndex);
+      return v == null ? 'n/a' : <span className={v <= 90 ? 'discount' : ''}>{v}</span>;
+    },
   },
   { key: 'over30', label: 'd>30°', title: 'Days per year above 30°C', get: (r) => r.town.daysOver30 },
   {
@@ -164,7 +223,7 @@ const COLUMNS: Col[] = [
   {
     key: 'peak',
     label: 'Peak °C',
-    title: "Mean daily high of the hottest month, whichever month that is locally",
+    title: 'Mean daily high of the hottest month, whichever month that is locally',
     get: (r) => r.town.hottestTmax,
   },
   {
@@ -186,14 +245,7 @@ const COLUMNS: Col[] = [
     render: (r, c) => {
       const v = c.affinity && c.dist ? affinityScore(r.town, c.affinity, c.dist) : null;
       if (v == null) return 'n/a';
-      return (
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center', justifyContent: 'flex-end' }}>
-          <span className="bar">
-            <i style={{ width: `${Math.round(v * 100)}%`, background: 'var(--gem)' }} />
-          </span>
-          <span>{Math.round(v * 100)}</span>
-        </div>
-      );
+      return <Bar v={v * 100} gem />;
     },
   },
   {
@@ -215,19 +267,60 @@ const COLUMNS: Col[] = [
   { key: 'pop', label: 'Pop', get: (r) => r.town.pop, render: (r) => n0(r.town.pop) },
 ];
 
+const PETS_COLUMN: Col = {
+  key: 'pets',
+  label: 'Dog',
+  title: 'Good for a dog: a vet nearby, protected land to walk in, summers a dog can bear',
+  get: (r) => r.breakdown.pets ?? -1,
+  render: (r) => (r.breakdown.pets == null ? 'n/a' : <Bar v={r.breakdown.pets * 100} />),
+};
+
+const NEAR_COLUMNS: Col[] = [
+  {
+    key: 'forgiven',
+    label: 'Would score',
+    title: 'The score with the things holding it back set aside',
+    get: (r) => r.forgiven ?? r.score,
+    render: (r, c) => (
+      <div title={`Would rank #${wouldRank(c.base, r.forgiven ?? r.score)} in your results`}>
+        <Bar v={r.forgiven ?? r.score} gem />
+      </div>
+    ),
+  },
+  {
+    key: 'held',
+    label: 'Held back by',
+    title: 'The one or two things between this place and the top of your list',
+    get: (r) => r.held?.map(heldLabel).join(' ') ?? '',
+    render: (r) => <HeldChips held={r.held} town={r.town} />,
+  },
+];
+
+function columnsFor(mode: Mode, showPets: boolean): Col[] {
+  let cols = [...BASE_COLUMNS];
+  if (showPets) cols.splice(cols.findIndex((c) => c.key === 'net'), 0, PETS_COLUMN);
+  if (mode === 'near') {
+    const at = cols.findIndex((c) => c.key === 'score');
+    cols = [...cols.slice(0, at), ...NEAR_COLUMNS, ...cols.slice(at)];
+  }
+  return cols;
+}
+
 /** Accent-insensitive, so "Malaga" finds "Málaga" and "Brasov" finds "Brașov". */
 const fold = (v: string) =>
   v.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 
 export default function TownTable({
-  ranked, all, reject, mode, gemModel, compare, refs, affinity, dist, selected, onSelect,
+  ranked, base, all, reject, mode, gemModel, compare, refs, affinity, dist, homeIndex,
+  workTz, showPets, selected, onSelect,
 }: Props) {
   const [sort, setSort] = useState<{ key: string; dir: 1 | -1 } | null>(null);
   const [query, setQuery] = useState('');
   const ctx: Ctx = useMemo(
-    () => ({ gem: gemModel, compare, refs, affinity, dist }),
-    [gemModel, compare, refs, affinity, dist],
+    () => ({ gem: gemModel, compare, refs, affinity, dist, homeIndex, workTz, base }),
+    [gemModel, compare, refs, affinity, dist, homeIndex, workTz, base],
   );
+  const columns = useMemo(() => columnsFor(mode, showPets), [mode, showPets]);
 
   const q = fold(query.trim());
   const hits = useMemo(() => {
@@ -262,7 +355,7 @@ export default function TownTable({
 
   const rows = useMemo(() => {
     if (!sort) return hits.slice(0, 400);
-    const col = COLUMNS.find((c) => c.key === sort.key);
+    const col = columns.find((c) => c.key === sort.key);
     if (!col) return hits.slice(0, 400);
     return [...hits]
       .sort((a, b) => {
@@ -273,7 +366,7 @@ export default function TownTable({
         return ((bv as number) - (av as number)) * sort.dir;
       })
       .slice(0, 400);
-  }, [hits, sort, ctx]);
+  }, [hits, sort, ctx, columns]);
 
   return (
     <div className="tablewrap">
@@ -291,10 +384,35 @@ export default function TownTable({
         )}
       </div>
 
+      {mode === 'near' && !q && ranked.length > 0 && (
+        <div className="modehint">
+          Places that would be among your ten best if you forgave <b>one or two things</b>:
+          a filter they miss, or a dimension so weak it drags the rest down. Budget is
+          forgiven only up to 25% over and summer only when just over the line; where you
+          are willing to live never is. Open one to see exactly what it would take.
+        </div>
+      )}
+
       {!ranked.length && !q && (
         <div className="empty">
-          Nothing matches. The budget and the summer limits are usually the binding pair, try
-          raising one of them. You can still search below to see why a specific place is out.
+          {mode === 'near' ? (
+            <>
+              No near misses. Nothing is within one or two forgivable things of your top ten,
+              which usually means your filters already let the good places in.
+            </>
+          ) : mode === 'gems' ? (
+            <>
+              No gems to show. A gem is a place priced below what its quality predicts, and
+              that needs measured prices, which only Spain publishes per town. Include Spain
+              in your countries to use this view.
+            </>
+          ) : (
+            <>
+              Nothing matches. The budget and the summer limits are usually the binding pair,
+              try raising one of them, or look at <b>Near misses</b> for places just outside.
+              You can still search below to see why a specific place is out.
+            </>
+          )}
         </div>
       )}
 
@@ -309,7 +427,10 @@ export default function TownTable({
               <ul className="whynot">
                 {excluded.map(({ town, why }) => (
                   <li key={town.id}>
-                    <b>{town.name}</b>, {town.countryName} {'·'} {why}
+                    <button className="link" onClick={() => onSelect(town.id)}>
+                      <b>{town.name}</b>
+                    </button>
+                    , {town.countryName} {'·'} {why}
                   </li>
                 ))}
               </ul>
@@ -319,8 +440,8 @@ export default function TownTable({
             </>
           ) : (
             <p>
-              Nothing in the dataset matches <b>{query}</b>. Places below 15,000 people are
-              only carried for Spain and the EU.
+              Nothing in the dataset matches <b>{query}</b>. Spain is carried down to 500
+              people, the rest of Europe to 5,000, and most other countries to 15,000 or more.
             </p>
           )}
         </div>
@@ -330,7 +451,7 @@ export default function TownTable({
         <thead>
           <tr>
             <th />
-            {COLUMNS.map((c) => (
+            {columns.map((c) => (
               <th
                 key={c.key}
                 title={c.key === 'ac' && compare ? `Cooling load as a percentage of ${compare.name}'s` : c.title}
@@ -355,7 +476,7 @@ export default function TownTable({
               onClick={() => onSelect(r.town.id)}
             >
               <td className="rankcol">{i + 1}</td>
-              {COLUMNS.map((c) => (
+              {columns.map((c) => (
                 <td
                   key={c.key}
                   className={
@@ -363,7 +484,9 @@ export default function TownTable({
                       ? 'town'
                       : ['province', 'country', 'like'].includes(c.key)
                         ? 'prov'
-                        : ''
+                        : c.key === 'held'
+                          ? 'heldcol'
+                          : ''
                   }
                 >
                   {c.render
@@ -385,7 +508,11 @@ export default function TownTable({
         <div className="empty" style={{ padding: '12px' }}>
           Showing the top {rows.length} of {hits.length.toLocaleString()}
           {q ? ` matching "${query.trim()}".` : '.'}
-          {mode === 'gems' ? ' Ranked by discount to modelled fair price.' : ' Tighten the filters to narrow.'}
+          {mode === 'gems'
+            ? ' Ranked by discount to modelled fair price.'
+            : mode === 'near'
+              ? ' Ranked by what they would score.'
+              : ' Tighten the filters to narrow.'}
         </div>
       )}
     </div>

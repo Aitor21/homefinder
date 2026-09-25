@@ -53,13 +53,26 @@ def _geotransform(page):
     return float(tv[3]), float(tv[4]), float(sv[0]), float(sv[1])
 
 
+def _blank(values, dtype):
+    """NaN out fill values, in place, and return the array.
+
+    Two conventions meet here. The float rasters fill with -3.4e38 and the
+    elevation raster with -32768, both caught by NODATA. Solar radiation is
+    stored as unsigned 16-bit, where the fill is the TOP of the range, 65535:
+    missed, it put six coastal towns, Alesund among them, on 65,535 kJ/m2 of
+    sunshine a day, which is about three times the Sahara.
+    """
+    values[values < NODATA] = np.nan
+    if np.dtype(dtype) == np.uint16:
+        values[values >= 65535] = np.nan
+    return values
+
+
 def _sample(arr, gt, lats, lons):
     ox, oy, sx, sy = gt
     col = np.clip(((lons - ox) / sx).astype(np.int64), 0, arr.shape[1] - 1)
     row = np.clip(((oy - lats) / sy).astype(np.int64), 0, arr.shape[0] - 1)
-    v = arr[row, col].astype(np.float64)
-    v[v < NODATA] = np.nan
-    return v
+    return _blank(arr[row, col].astype(np.float64), arr.dtype)
 
 
 def _sample_with_fallback(arr, gt, lats, lons, radius=3):
@@ -84,7 +97,7 @@ def _sample_with_fallback(arr, gt, lats, lons, radius=3):
                 max(0, row - r) : row + r + 1,
                 max(0, col - r) : col + r + 1,
             ].astype(np.float64)
-            win[win < NODATA] = np.nan
+            _blank(win, arr.dtype)
             if np.isfinite(win).any():
                 best = float(np.nanmean(win))
                 break

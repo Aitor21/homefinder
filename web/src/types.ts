@@ -46,6 +46,13 @@ export interface Town {
   lon: number;
   pop: number;
   elev: number;
+  /**
+   * IANA time zone, "Europe/Madrid". Converted in the browser into an offset
+   * from the user's own clock, which is what a remote worker actually needs and
+   * what no stored number could be: daylight saving starts on different dates
+   * in different places, so the gap between two zones changes during the year.
+   */
+  tz?: string | null;
 
   // climate
   /** Mean daily high of the hottest month, whichever month that is. */
@@ -106,23 +113,57 @@ export interface Town {
   cyclewayKm: number | null;
   cycleSegments5km: number | null;
   /**
-   * False where the shop/health/school layers were never queried (everywhere
-   * outside Spain). A null there means "not looked at", never "nothing there",
-   * and the scoring model drops the dimension rather than penalising the town.
+   * False where the shop and health layers were never queried: outside every
+   * surveyed box, or where a box failed to download. A null there means "not
+   * looked at", never "nothing there", and the scoring model drops the
+   * dimension rather than penalising the town.
    */
   amenitiesSurveyed: boolean;
   /** Train, metro and coach terminals were queried in this place's box. */
   transitSurveyed: boolean;
+  /**
+   * How densely OpenStreetMap covers this country's own towns, against the
+   * median country (1 = typical). Below ~0.35 an absent shop or vet is as
+   * likely to be unmapped as missing, and the UI says so.
+   */
+  servicesMapped?: number | null;
+  /** The same measure for vets, which are mapped far more unevenly than shops. */
+  vetsMapped?: number | null;
+
+  // animals
+  /** Nearest veterinary practice. */
+  vetKm?: number | null;
+  /** How many practices within 10 km: one vet and a choice of vets differ. */
+  vet10km?: number | null;
+  /** Nearest fenced or designated off-lead dog area. Mapping is uneven. */
+  dogParkKm?: number | null;
+  /** Vets and dog parks were queried here. */
+  petsSurveyed?: boolean;
 
   // terrain
   coastKm: number | null;
+  /** Nearest mapped beach of any kind: sea, lake or river. Not a coast measure. */
   beachKm: number | null;
+  /**
+   * Distance to the edge of the nearest protected nature: national parks,
+   * protected areas of IUCN class 1 to 5, nature reserves.
+   */
   parkKm: number | null;
   skiKm: number | null;
   maxElev25km: number | null;
   relief25km: number | null;
-  /** False where beach/park/ski were never queried (outside Spain). */
+  /** False where beach, nature or ski were not surveyed for this place. */
   terrainPoisSurveyed: boolean;
+
+  // safety
+  /**
+   * Intentional homicides per 100,000 people, national, UNODC via the World
+   * Bank. The one crime figure comparable between countries, because a body is
+   * counted the same way everywhere. Says nothing about one town against the
+   * next, and the UI says so.
+   */
+  homicideRate?: number | null;
+  homicideYear?: number | null;
 
   // air quality -- CAMS reanalysis, regional background not street level
   pm25: number | null;
@@ -172,6 +213,19 @@ export interface Town {
   provincialEurM2: number;
 }
 
+/**
+ * Bringing a dog or cat in from the EU, easiest first. `quarantine` is the one
+ * that separates you from the animal however well you plan.
+ */
+export type PetRegime = 'passport' | 'paperwork' | 'titer' | 'quarantine';
+
+export const PET_REGIME_LABEL: Record<PetRegime, string> = {
+  passport: 'EU pet passport',
+  paperwork: 'Health certificate',
+  titer: 'Blood test months ahead',
+  quarantine: 'Quarantine on arrival',
+};
+
 export interface CountryRule {
   name: string;
   continent: string;
@@ -179,6 +233,9 @@ export interface CountryRule {
   ownership: Ownership;
   /** The actual rule in one sentence. "Restricted" alone is not actionable. */
   note: string;
+  /** null where the rule was not verified: the UI says "check", never guesses. */
+  pets?: PetRegime | null;
+  petsNote?: string | null;
 }
 
 /** A company that builds and sells new homes. */
@@ -274,6 +331,20 @@ export interface Filters {
   /** Show only places an EU or EFTA passport lets you live in without a visa. */
   freeMovementOnly: boolean;
   requireObservedPrice: boolean;
+  /**
+   * Largest time difference from your working clock, in hours, at either
+   * solstice. null = any. For someone employed remotely this is frequently the
+   * real constraint: a lovely town nine hours out means working nights.
+   */
+  maxTzDiff: number | null;
+  /** Hours of daylight on the shortest day, at least. 0 = any. */
+  minWinterDaylight: number;
+  /** Estimated flight time from home, at most, in hours. null = any. */
+  maxHomeFlightH: number | null;
+  /** National homicide rate per 100,000, at most. At or above SAFETY_ANY = any. */
+  maxHomicide: number;
+  /** Leave out countries that quarantine an arriving dog or cat. */
+  noPetQuarantine: boolean;
 }
 
 export interface Weights {
@@ -294,10 +365,21 @@ export interface Weights {
   energyBill: number;
   /** Fit to the taste learned from the places you picked. */
   affinity: number;
+  /** Protected nature within reach: national parks, reserves. */
+  nature: number;
+  /** Ski slopes within a day trip. */
+  ski: number;
+  /** Good for a dog: a vet nearby, somewhere to walk, summers it can bear. */
+  pets: number;
+  /** Low national homicide rate. */
+  safety: number;
 }
 
 /** The maximum-population slider's top notch: at or above this, no upper limit. */
 export const POP_ANY = 5_000_000;
+
+/** The homicide slider's top notch, per 100,000: at or above this, no limit. */
+export const SAFETY_ANY = 50;
 
 export const DEFAULT_FILTERS: Filters = {
   budget: 400_000,
@@ -336,6 +418,11 @@ export const DEFAULT_FILTERS: Filters = {
   // would rather not solve it.
   freeMovementOnly: false,
   requireObservedPrice: false,
+  maxTzDiff: null,
+  minWinterDaylight: 0,
+  maxHomeFlightH: null,
+  maxHomicide: SAFETY_ANY,
+  noPetQuarantine: false,
 };
 
 // Rain and winter cold sit at zero on purpose: cold and wet are a preference
@@ -360,4 +447,13 @@ export const DEFAULT_WEIGHTS: Weights = {
   // Weighted heavily once it has something to learn from: a list of places you
   // would actually live in says more than any slider you would set by hand.
   affinity: 8,
+  // Nature on the doorstep is something nearly everyone values a little, so it
+  // starts low rather than off. Skiing and dogs are specific to some people and
+  // start at zero; the questionnaire switches them on for those who say so.
+  nature: 2,
+  ski: 0,
+  pets: 0,
+  // National and coarse, so it is weighted modestly: it separates countries
+  // whose rates differ tenfold, not one Spanish town from the next.
+  safety: 3,
 };

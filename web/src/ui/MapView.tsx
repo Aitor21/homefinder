@@ -5,8 +5,19 @@ import L from 'leaflet';
 // visitors to a third party.
 import 'leaflet/dist/leaflet.css';
 import type { Ranked } from '../scoring';
+import type { Town } from '../types';
 import type { Mode } from '../App';
 import type { Listing, BuildStatus } from '../listings';
+
+/**
+ * Leaflet tooltips take HTML, and these strings are data: town names from
+ * GeoNames and, worse, titles from a CSV the user imported. Without escaping, a
+ * title like <img onerror=...> in someone's spreadsheet would run as script.
+ */
+const esc = (v: unknown) =>
+  String(v ?? '').replace(/[&<>"']/g, (ch) => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]!
+  ));
 
 /**
  * Drawing every match becomes the bottleneck once the dataset covers a
@@ -19,6 +30,9 @@ interface Props {
   ranked: Ranked[];
   mode: Mode;
   selected: string | null;
+  /** The town whose panel is open, which may not be on the map at all:
+   *  one opened from a search can be a place the filters exclude. */
+  focus?: Town | null;
   onSelect: (ine: string) => void;
   /** Imported developments, drawn as their own layer. */
   listings?: Listing[];
@@ -69,7 +83,7 @@ function colour(v: number): string {
 }
 
 export default function MapView({
-  ranked, mode, selected, onSelect, listings, showPlaces, showBuilds,
+  ranked, mode, selected, focus, onSelect, listings, showPlaces, showBuilds,
 }: Props) {
   const el = useRef<HTMLDivElement>(null);
   const map = useRef<L.Map | null>(null);
@@ -126,7 +140,11 @@ export default function MapView({
     lg.clearLayers();
     if (!showPlaces || !ranked.length) return;
 
-    const key = (r: Ranked) => (mode === 'gems' ? (r.gem ?? 0) : r.score);
+    // A near miss is coloured by what it WOULD score, since that is the
+    // claim being made about it, and drawn as a dashed ring so it can never
+    // be mistaken for a place that actually passes your filters.
+    const key = (r: Ranked) =>
+      mode === 'gems' ? (r.gem ?? 0) : mode === 'near' ? (r.forgiven ?? r.score) : r.score;
     const vals = ranked.map(key);
     const lo = Math.min(...vals);
     const hi = Math.max(...vals);
@@ -146,16 +164,21 @@ export default function MapView({
       const t = r.town;
       const v = (key(r) - lo) / span;
       const isSel = t.id === selected;
+      const ring = mode === 'near';
       L.circleMarker([t.lat, t.lon], {
-        radius: isSel ? 9 : 3 + Math.min(6, Math.log10(Math.max(t.pop, 100)) - 1.6),
+        radius: isSel ? 9 : 3 + Math.min(6, Math.log10(Math.max(t.pop, 100)) - 1.6) + (ring ? 1.5 : 0),
         fillColor: colour(v),
-        fillOpacity: 0.85,
-        color: isSel ? '#111' : '#fff',
-        weight: isSel ? 2.5 : 0.6,
+        fillOpacity: ring ? 0.35 : 0.85,
+        color: isSel ? '#111' : ring ? colour(v) : '#fff',
+        weight: isSel ? 2.5 : ring ? 2 : 0.6,
+        dashArray: ring && !isSel ? '3 3' : undefined,
         renderer: renderer.current ?? undefined,
       })
         .bindTooltip(
-          `<b>${t.name}</b> <span style="opacity:.6">${t.countryName}</span><br>` +
+          `<b>${esc(t.name)}</b> <span style="opacity:.6">${esc(t.countryName)}</span><br>` +
+            (ring && r.forgiven != null
+              ? `would score ${Math.round(r.forgiven)}, now ${Math.round(r.score)}<br>`
+              : '') +
             `${Math.round(t.eurM2).toLocaleString()} €/m² · ` +
             `${t.daysOver30.toFixed(0)}d >30°C · ${t.tropicalNights.toFixed(0)} warm nights`,
           { direction: 'top' },
@@ -203,8 +226,8 @@ export default function MapView({
         renderer: renderer.current ?? undefined,
       })
         .bindTooltip(
-          `<b>${l.title}</b><br>${t.name}<br>` +
-            `${STAGE_TEXT[stage]}<br>${price}${vs}` +
+          `<b>${esc(l.title)}</b><br>${esc(t.name)}<br>` +
+            `${STAGE_TEXT[stage]}<br>${esc(price)}${esc(vs)}` +
             `<br><span style="opacity:.6">pinned at the town centre, not the address</span>`,
           { direction: 'top' },
         )
@@ -213,12 +236,13 @@ export default function MapView({
     }
   }, [listings, ranked, showBuilds, onSelect]);
 
-  // Pan to a town chosen from the table.
+  // Pan to the open town. Taken from `focus` rather than looked up in the
+  // plotted rows, because a town opened from a search may be one the filters
+  // exclude, and the map used to simply stay where it was.
   useEffect(() => {
-    if (!selected || !map.current) return;
-    const t = ranked.find((r) => r.town.id === selected)?.town;
-    if (t) map.current.panTo([t.lat, t.lon], { animate: true });
-  }, [selected, ranked]);
+    if (!focus || !map.current) return;
+    map.current.panTo([focus.lat, focus.lon], { animate: true });
+  }, [focus]);
 
   return <div id="map" ref={el} />;
 }

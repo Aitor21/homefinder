@@ -27,7 +27,15 @@ export type DayShape = 'wfh' | 'hybrid' | 'commute';
 export type PlaceSize = 'city' | 'edge' | 'town' | 'any';
 export type Flying = 'often' | 'sometimes' | 'rarely';
 export type WinterTaste = 'love-cold' | 'dont-mind' | 'prefer-mild';
-export type Essential = 'train' | 'hospital' | 'coast' | 'mountains' | 'bike' | 'observed-price';
+/**
+ * Things someone can say are essential. `bike` and `hospital` used to be here:
+ * the first only nudged a weight that never measured cycling, and the second
+ * had no effect at all. Old saved answers may still carry them and are simply
+ * ignored.
+ */
+export type Essential =
+  | 'train' | 'coast' | 'mountains' | 'nature' | 'ski' | 'dog' | 'observed-price'
+  | 'bike' | 'hospital';
 
 export interface Answers {
   ruledOut: string[];
@@ -208,7 +216,7 @@ export const REFERENCE_CITIES: Array<{ match: string; cc: string; label: string 
 ];
 
 const fold = (v: string) =>
-  v.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+  v.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
 
 /** Resolve the reference list against the loaded dataset, largest match wins. */
 export function resolveReferences(
@@ -375,6 +383,10 @@ export function buildProfile(answers: Answers, towns: Town[]): Profile {
         'for months, not commuting through it. Cool summers weighted highest, and distance ' +
         'to a city relaxed since you are not making that trip daily.',
     );
+    notes.push(
+      'If your employer keeps office hours somewhere else, set a limit under Remote work: ' +
+        'a place nine hours from your team means working nights, however good it is.',
+    );
   } else if (answers.day === 'commute') {
     weights.city = 9;
     filters.maxCityKm = 45;
@@ -397,7 +409,7 @@ export function buildProfile(answers: Answers, towns: Town[]): Profile {
     filters.minPop = 2_000;
     filters.maxPop = 60_000;
     weights.amenities = Math.max(weights.amenities, 6);
-    notes.push('Small towns only (2,000–60,000), with local services weighted up.');
+    notes.push('Small towns only (2,000 to 60,000 people), with local services weighted up.');
   } else {
     filters.minPop = 1_500;
   }
@@ -459,8 +471,20 @@ export function buildProfile(answers: Answers, towns: Town[]): Profile {
     } else if (e === 'mountains') {
       weights.mountains = 8;
       notes.push('Mountains weighted up.');
-    } else if (e === 'bike') {
-      weights.amenities = Math.max(weights.amenities, 6);
+    } else if (e === 'nature') {
+      weights.nature = 7;
+      notes.push('Protected nature within reach weighted up: national parks, reserves, protected land.');
+    } else if (e === 'ski') {
+      weights.ski = 6;
+      notes.push('Ski slopes within a day trip weighted up.');
+    } else if (e === 'dog') {
+      weights.pets = 7;
+      notes.push(
+        'Moving with a dog: a vet nearby, protected land to walk in and summers a dog can bear ' +
+          'are weighted up. Each town also shows what bringing the dog in takes; Australia, ' +
+          'New Zealand, Iceland, Taiwan, Malaysia, Mauritius and the Seychelles quarantine ' +
+          'arriving pets, and one tick in the filters leaves them out.',
+      );
     } else if (e === 'observed-price') {
       filters.requireObservedPrice = true;
       notes.push(

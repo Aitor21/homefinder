@@ -135,13 +135,27 @@ collected.
 | Airports and air connectivity | full | full | full |
 | Air quality, internet speed, cost of living | full | full | full |
 | Public transport | full | full | full (28,467 of 31,538 places) |
-| Shops, health, schools, cycleways | full | **not surveyed** | **not surveyed** |
+| Shops, pharmacies, hospitals, vets, dog parks | full | full | full (28,467 of 31,538 places) |
+| Protected nature, beaches, ski areas | full | full | full (28,467 of 31,538 places) |
+| Time zone, winter daylight, national homicide rate | full | full | full |
+| Schools, cycleways | full | **not surveyed** | **not surveyed** |
 | Price | official municipal series | **national average band** | **national average band** |
 | Gem score | yes | no | no |
 
 The uneven parts are not hidden. A missing amenity is `null` with
 `amenitiesSurveyed: false`, which the scoring model treats as *drop this
-dimension and renormalise*, never as "this town has no shops".
+dimension and renormalise*, never as "this town has no shops". The 3,071 places
+without the OpenStreetMap layers are the ones outside every surveyed box:
+southeast and south Asia, a few remote islands.
+
+A second kind of gap is subtler, and handled the same way: **a country can be
+surveyed and still barely mapped.** Each country's own towns of 50,000 and more
+are compared with the median country, and where the map shows under a third of
+the usual density (China, Egypt, Ghana and Tanzania show essentially no shops;
+Brazil, South Africa and Turkey barely any vets), those layers drop out of the
+score there instead of calling every town in the country remote. The town panel
+says so, because a long distance in those places means *unmapped* more often
+than *absent*.
 
 **Spain's prices are the strongest layer here. Everywhere else is the weakest,
 and the world made that gap bigger.** Spain is the only country on earth that
@@ -310,6 +324,156 @@ result set roughly in half.
 Curitiba is the case that shows the layers are doing real work: it reports metro
 400 km away and a coach terminal 2.4 km away, which is exactly right. Its famous
 transit system is bus rapid transit, not rail.
+
+## Near misses: the places your filters were hiding
+
+Filters are blunt. A town that is right in every respect but sits two hours
+from a hub airport, when you asked for ninety minutes, simply disappears, and
+nothing tells you it was there. The same happens more quietly inside the score,
+where one terrible dimension drags an excellent place down to the middle of a
+list nobody scrolls. For someone who would happily trade a long airport run for
+everything else being right, those are exactly the places worth seeing, so they
+get their own view.
+
+A **near miss** is a place that would be among your ten best results if you
+forgave **one or two things**:
+
+- a threshold filter it misses: the airport, the hub, the nearest city, the
+  population limits, broadband, air, cost of living, the clock, the flight home;
+- or, if it passes every filter, remoteness so bad it is not even close
+  (under 25/100 on airports, city access or local services).
+
+Two of your filters are more than thresholds, because they are why most people
+use this at all. **Budget** is forgiven only up to 25% over: twice the budget is
+not a near miss, it is a different search. **Summer** filters are forgiven only
+when just over the line, and even then the summer target keeps scoring, so a
+scorching city cannot pass itself off as a near miss by being cheap and well
+connected.
+
+Two things are never forgiven. **Where you are willing to live** (the countries,
+continents and regions you picked, whether you can buy, visas, pet quarantine),
+because a town outside the countries you chose is not nearly inside them. And
+**what a place is**: its climate, what it costs, its broadband, whether it has
+sea or mountains. The first version forgave any weak dimension, and on real data
+the list filled with things that are not near misses at all: Bay Area suburbs
+forgiven a cost of living scoring 3/100, Paris suburbs forgiven for having
+neither mountains nor sea, a town forgiven 2/100 broadband that no remote worker
+could live with. Narrowed to remoteness, the list became what it was meant to
+be: la Seu d'Urgell and Bellver de Cerdanya in the Pyrenees, three hours from
+Girona's airport; the Trentino valleys, two to three hours from Verona; San
+Vicente de la Barquera, 2 h 41 from Bilbao.
+
+Each one is labelled **just over** or **not even close**, with the numbers,
+the score it would reach and where that would land in your results. A **let it
+in** button moves exactly one filter just far enough for that place to pass.
+It does not change the score: letting a town through the airport filter still
+leaves the airport weight counting against it, and the panel says so and names
+the weight to lower if that genuinely does not matter to you.
+
+Any town can now be opened from a search too, including one your filters
+exclude, and it lists every reason rather than only the first.
+
+## Living with a dog
+
+A **Good for a dog** weight scores each place on the things that decide it day
+to day: a vet nearby (the one you need at 2 am), protected land to walk in, and
+summers a dog can bear, since dogs overheat far sooner than people do. A fenced
+dog park nearby is a bonus on top and never a penalty: whether a country builds
+them is cultural and whether it maps them is luck, so their absence proves
+nothing. 60,727 vets and 28,299 dog parks are mapped worldwide; where vets are
+barely mapped (Brazil, South Africa, Turkey and others), that part drops out
+rather than counting against the town.
+
+**Bringing the animal in** is often the bigger question, and every town panel
+answers it for a dog or cat travelling from the EU:
+
+| Regime | What it takes | Countries |
+|---|---|---|
+| EU pet passport | Microchip, rabies vaccine, the passport | EU and EFTA, the UK, Andorra (Finland, Ireland, Malta, Norway and the UK add a tapeworm treatment) |
+| Health certificate | Microchip, vaccine, an official certificate, sometimes a permit | Most of the Americas, the Balkans, Turkey, the Caucasus, north Africa, the Gulf |
+| Blood test months ahead | A rabies antibody test at an approved lab, often with a wait of months | Japan (180 days), South Korea, Singapore, China, Indonesia, Israel, Jamaica, Barbados, Trinidad |
+| Quarantine on arrival | A facility stay however well you plan | Australia and New Zealand (10 days or more), Iceland (14), Taiwan (7), Malaysia (7 or more), Mauritius (5), the Seychelles (14) |
+
+Checked in September 2026 against the national veterinary authorities. A
+country that could not be verified says "check" rather than being guessed at,
+and the panel adds the caveat that several countries restrict particular breeds.
+One tick in the filters leaves out every quarantine country, and "Moving with a
+dog" in the questionnaire switches the weight on and explains the rest.
+
+## Remote work, daylight and home
+
+Three things decide daily life abroad that no climate normal captures:
+
+- **Your clock.** For anyone employed remotely, a town nine hours out means
+  working nights, however good it is. The gap is measured from this device's
+  time zone, or from any zone you pick (your employer's, say), in both January
+  and July, because daylight saving starts on different dates in different
+  places and runs the other way round in the south: Santiago de Chile is four
+  hours behind Madrid in January and six in July. A limit applies to the worse
+  of the two.
+- **Winter daylight.** Someone who loves the cold may not have pictured five and
+  a half hours of daylight in an Oslo December, or none at all in Tromso. Each
+  panel shows the shortest and longest day, and a filter sets a floor.
+- **Home.** Distance and a rough direct flight time from the largest place in
+  your home country, which the panel names, so nobody in Lyon is told they live
+  in Paris without seeing that it said Paris.
+
+## Safety
+
+A national homicide rate per 100,000 people, UNODC figures via the World Bank.
+It is the one crime statistic comparable between countries, because a body is
+counted the same way everywhere, where theft and assault depend on what people
+bother to report. Japan runs 0.2, Spain 0.7, the United States 5.8, Brazil 19
+and Mexico 25. It is scored on a log scale, so a tenfold gap reads as the large
+difference it is, and weighted modestly by default: it tells countries apart,
+never one town from the next. Thailand, Vietnam, Cambodia, Laos, Ethiopia and
+Taiwan have no figure since 2015 and show none rather than an old one.
+
+## What the September audit fixed
+
+Every dial was checked against the real dataset rather than the code's intent.
+What did not work as intended:
+
+- **Filters reported only their first failure,** which is what hid near misses
+  in the first place. Every reason is now computed, with the numbers.
+- **Two questionnaire answers did nothing.** "Cycling infrastructure" nudged a
+  weight that never measured cycling, and "hospital" had no effect at all. Both
+  are gone; nature, skiing and moving with a dog replaced them.
+- **Beaches and protected areas were downloaded for 90% of the world and used by
+  nothing.** Nature and skiing are now weights. Beaches are shown but kept out
+  of the coast score, because OpenStreetMap counts river and lake beaches too and
+  put Madrid five kilometres from "the beach".
+- **The protected-area layer missed most parks,** because it only asked for
+  areas mapped as ways and most are relations. It had Madrid 115 km from anything
+  protected, with the Guadarrama national park an hour's drive away. It now holds
+  164,873 areas, measured to their edge rather than their centre: Madrid 4 km,
+  Bilbao 10.
+- **Six coastal towns, Alesund among them, had 65,535 kJ/m2 of sun a day,** three
+  times the Sahara: the solar raster's fill value read as data. Fixed where the
+  raster is sampled.
+- **Air quality for two thirds of places was January and April only,** the
+  smoggiest half of the northern year read as an annual mean. All four sample
+  months are now measured for every cell. Should a future run hit the daily
+  quota partway, the missing months are estimated from the seasonal shape of
+  measured neighbours, cross-validated at 2.1% error on the annual figure.
+- **Gems mode ranked every non-Spanish town in the middle,** at a residual of
+  zero, above every Spanish town that happened to be dearer than predicted. It
+  now shows only places with a price signal and says why when there are none.
+- **The cost-of-living slider read on a Spain = 100 scale** whatever country you
+  said you were in, and the table column did the same. Both follow home now.
+- **The town panel told non-Spanish users their local portal links were
+  "Spanish portals".** The links had been country-aware for weeks; the note had not.
+- **The questionnaire's airport hints ("hub within 90 km") contradicted the
+  45-minute limit they set,** and its strictness labels said "cooler" to someone
+  who had asked for warmer.
+- **The pipeline could cache a lie three ways.** A Switzerland-only mirror
+  answered every other query with a valid, empty result; Overpass reports a
+  server timeout as HTTP 200 with whatever it had, often nothing; and a response
+  cut off mid-transfer was cached whole and replayed on every retry. All three
+  are now refused before they reach the cache, and the world transit cache keys,
+  which had quietly drifted, point at the files on disk again.
+- **Map tooltips now escape their text.** A title in an imported spreadsheet
+  could otherwise have injected markup into the page.
 
 ## The questionnaire
 
@@ -666,13 +830,18 @@ measured and 4,210 modelled.
 | Climate | WorldClim 2.1 recalibrated on ERA5 via Open-Meteo | worldwide, 295 anchors across 9 regions |
 | Terrain, coast, relief | WorldClim elevation raster | worldwide, coast from its land mask |
 | Airports | OurAirports + published traffic for 499 airports | worldwide |
-| Air quality | CAMS reanalysis via Open-Meteo | worldwide, four-month seasonal sample, 100% of places |
+| Air quality | CAMS reanalysis via Open-Meteo | worldwide, January, April, July and October measured for every cell |
 | Internet | Ookla open Speedtest tiles, 2025 Q1 | worldwide |
 | Cost of living | World Bank ICP price levels, rebased Spain = 100 | worldwide |
 | Energy and tax | Degree days x published tariffs, curated per country | worldwide |
 | Public transport | OpenStreetMap via Overpass | worldwide: 37,592 stations, 74,277 metro/tram stops, 52,057 coach terminals |
-| Beaches, ski areas, protected land | OpenStreetMap via Overpass | worldwide: 183,084 beaches, 3,435 ski areas, 29,795 protected areas |
-| Shops, health, schools, cycleways | OpenStreetMap via Overpass | Spain |
+| Beaches, ski areas, protected nature | OpenStreetMap via Overpass | worldwide: 183,084 beaches, 3,435 ski areas, 164,873 protected areas and reserves |
+| Shops, pharmacies, hospitals | OpenStreetMap via Overpass | worldwide: 458,406 supermarkets, 423,347 pharmacies, 299,929 hospitals and clinics |
+| Vets and dog parks | OpenStreetMap via Overpass | worldwide: 60,727 vets, 28,299 dog parks |
+| Schools, cycleways | OpenStreetMap via Overpass | Spain |
+| Time zones | GeoNames IANA zones, offsets computed in the browser | worldwide |
+| Safety | UNODC intentional homicide rates via the World Bank | 95 of 101 countries, national |
+| Bringing a pet in | National veterinary authorities, Sep 2026 | 94 countries, for an animal travelling from the EU |
 | Prices | MIVAU quarterly (ES) + national averages | Spain measured, elsewhere a band |
 | Buying and residence rules | Government and law-firm sources, Sep 2026 | 103 countries |
 | New-build developers | Company sites and trade press, Sep 2026 | 72 developers, 24 countries, incl. public housing agencies |
@@ -719,8 +888,17 @@ told its nearest station was in Portugal.
 - **Grid resolution.** 4.6 km is good, but a valley floor and a ridge 3 km apart
   can still share a cell. The lapse-rate correction helps; it is not a substitute
   for visiting.
-- **OSM coverage is uneven in small villages.** A missing supermarket may mean
-  "not mapped", not "not there".
+- **OSM coverage is uneven.** A missing supermarket or vet may mean "not
+  mapped", not "not there". Where a whole country is thinly mapped the layer
+  drops out of its score (see coverage above); inside a well-mapped country a
+  village can still be missing a shop that exists.
+- **Protected nature is measured to the circle inscribed in each area's bounding
+  box,** not its true outline, which would need every boundary's geometry.
+  Deliberately conservative: a long thin reserve is never credited with land it
+  does not cover. Marine and continental-scale areas over 300 km across are
+  left out.
+- **Pet rules assume the animal comes from the EU.** From elsewhere the answer
+  can differ, sometimes a lot, and the panel says so.
 - **Distances start as straight-line x 1.25.** Drive times are then modelled
   from that with a terrain-aware detour factor and a speed that rises with trip
   length, which is calibrated against known routes (Bilbao to its airport, 13 km,
@@ -741,12 +919,14 @@ told its nearest station was in Portugal.
   and an interior town differ by a factor of five. **Use it to sort, never to
   value.**
 
-- **Air quality is a four-month sample, and coverage is partial.** PM2.5 comes
-  from four representative months of CAMS reanalysis rather than a full year,
-  which captures the seasonal swing without a twelvefold quota bill. Coverage is
-  filling in over several days because the free tier allows 10,000 units a day
-  and the world needs roughly 11,000; a cell with no reading shows null rather
-  than a guess.
+- **Air quality is a four-month sample.** PM2.5 comes from January, April, July
+  and October of CAMS reanalysis rather than a full year, which captures the
+  seasonal swing without a twelvefold quota bill. All four are measured for
+  every cell in the shipped data. The free tier allows 10,000 units a day, so a
+  rerun that stops partway fills the gap from the seasonal shape of the nearest
+  cells that measured the missing month (2.1% median error on the annual
+  figure, measured by hiding months that were in fact measured), and the panel
+  says how many of the four seasons were measured.
 - **No scraping.** Idealista and Fotocasa both forbid it and actively block it.
   Deep links reach the same listings and keep working. An Idealista API adapter
   is wired but dormant until you hold a key.
@@ -775,9 +955,13 @@ pipeline/          Python. Run occasionally; resumable and cached.
   stages/          places, worldclim, climate, access, amenities, terrain, prices
   emit.py          merges everything into web/public/data/towns.json (columnar)
 web/               Vite + React + TypeScript + Leaflet
-  src/scoring.ts   the weighted model, pure and unit-tested
+  src/scoring.ts   the weighted model and every filter, pure and unit-tested
+  src/nearmiss.ts  places one or two forgivable things from your top ten
+  src/clock.ts     time differences, daylight, distance from home
   src/gems.ts      ridge-regularised residual regression
   src/listings.ts  portal deep links, CSV import, dormant API adapter
 ```
 
-`npm test` covers the scoring model, the gem regression and the listing parsers, 20 tests, no I/O.
+`npm test` covers the scoring model, the filters, near misses, clocks and
+daylight, the gem regression, the questionnaire and the listing parsers: 152
+tests, no I/O.

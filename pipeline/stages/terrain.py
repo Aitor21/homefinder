@@ -45,6 +45,91 @@ def _in_boxes(lat, lon, boxlist):
     return inside
 
 
+# Protected nature: national parks, protected areas of IUCN class 1 to 5, and
+# nature reserves.
+#
+# The first version asked only for protected-area WAYS plus national-park
+# relations, and most protected land is mapped as relations. It put Madrid
+# 115 km from anything protected, with the Guadarrama national park 50 km up the
+# road, and Bilbao 70 km out with Gorbeia on the horizon. The same query also
+# took each area as its centre point, which is the wrong question: the middle of
+# a 60 km park is not where you walk the dog, its edge is.
+PARK_FRAGS = [
+    'way[boundary=protected_area]["protect_class"~"^[1-5]$"]',
+    'relation[boundary=protected_area]["protect_class"~"^[1-5]$"]',
+    "way[boundary=national_park]",
+    "relation[boundary=national_park]",
+    "way[leisure=nature_reserve]",
+    "relation[leisure=nature_reserve]",
+]
+# Areas wider than this across are marine reserves or administrative giants
+# (the Great Barrier Reef Marine Park is 2,000 km long). Kept, they would put
+# every town on a long stretch of coast "inside" protected nature.
+PARK_MAX_DIAG_KM = 300.0
+# Below this inscribed radius an area is treated as a point, which the gridded
+# search handles; the few larger ones are brute-forced with their radius.
+PARK_POINT_KM = 5.0
+KM_PER_DEG = np.pi * c.EARTH_R_KM / 180.0
+
+
+def _areas(cache_key, bbox):
+    q = ("[out:json][timeout:900];("
+         + "".join(f"{f}({bbox});" for f in PARK_FRAGS)
+         + ");out ids bb qt;")
+    data = c.overpass(q, cache_key=cache_key)
+    out = [(b["minlat"], b["minlon"], b["maxlat"], b["maxlon"])
+           for e in data["elements"] if (b := e.get("bounds"))]
+    return np.array(out, dtype=np.float64).reshape(-1, 4)
+
+
+def nature_km(lats, lons):
+    """Distance to the nearest protected area's edge, approximately, and a mask
+    of which places were inside a box that actually answered.
+
+    Each area is its bounding box, reduced to the circle inscribed in it. That
+    circle is deliberately the conservative choice: a thin diagonal reserve has
+    a large box but a small inscribed circle, so it is never credited with land
+    it does not cover.
+    """
+    answered, parts = [], []
+    for key, bbox in boxes.worldwide().items():
+        try:
+            a = _areas(f"osm_nature_{key}_v1", bbox)
+        except Exception as exc:  # noqa: BLE001
+            c.warn(f"nature/{key} failed ({type(exc).__name__}) -- null inside this box")
+            continue
+        answered.append(bbox)
+        parts.append(a)
+        c.log(f"nature/{key}: {len(a)} areas", 1)
+    surveyed = _in_boxes(lats, lons, answered)
+    if not parts or not sum(len(p) for p in parts):
+        return np.full(len(lats), np.inf), surveyed
+
+    A = np.concatenate(parts)
+    clat = (A[:, 0] + A[:, 2]) / 2
+    clon = (A[:, 1] + A[:, 3]) / 2
+    half_h = (A[:, 2] - A[:, 0]) / 2 * KM_PER_DEG
+    half_w = (A[:, 3] - A[:, 1]) / 2 * KM_PER_DEG * np.cos(np.radians(clat))
+    diag = 2 * np.hypot(half_h, half_w)
+    # A negative width is a box that crosses the date line; rare enough to drop.
+    keep = (half_w >= 0) & (half_h >= 0) & (diag <= PARK_MAX_DIAG_KM)
+    clat, clon = clat[keep], clon[keep]
+    rad = np.minimum(half_h, half_w)[keep]
+    c.log(f"nature: {int(keep.sum())} areas kept of {len(A)} "
+          f"({int((~keep).sum())} marine or continental-scale dropped)", 1)
+
+    small = rad <= PARK_POINT_KM
+    d, i = c.nearest_grid(lats, lons, clat[small], clon[small])
+    est = np.where(i >= 0, d - rad[small][np.maximum(i, 0)], np.inf)
+    blat, blon, brad = clat[~small], clon[~small], rad[~small]
+    if len(blat):
+        for s in range(0, len(lats), 256):
+            e = s + 256
+            dd = c.haversine(lats[s:e, None], lons[s:e, None], blat[None, :], blon[None, :])
+            est[s:e] = np.minimum(est[s:e], (dd - brad[None, :]).min(axis=1))
+    return np.maximum(est, 0.0), surveyed
+
+
 def run():
     c.log("stage: terrain")
     munis = c.read_stage("places")
@@ -113,8 +198,9 @@ def run():
         else:
             max_elev[j] = min_elev[j] = np.nan
 
-    # --- peaks and protected land ----------------------------------------------
+    # --- beaches and ski areas --------------------------------------------------
     def points(cache_key, frags, bbox=None):
+        """(lat, lon, answered). A box that failed is not a box with nothing in it."""
         try:
             parts = "".join(f"{f}({bbox});\n " for f in frags)
             q = f"[out:json][timeout:600];\n({parts});\nout center;"
@@ -126,60 +212,57 @@ def run():
                 elif "center" in e:
                     lat.append(e["center"]["lat"]); lon.append(e["center"]["lon"])
             c.log(f"{cache_key}: {len(lat)} features", 1)
-            return np.array(lat), np.array(lon)
+            return np.array(lat), np.array(lon), True
         except Exception as exc:  # noqa: BLE001
-            c.warn(f"{cache_key} failed ({type(exc).__name__}) -- field will be null")
-            return np.array([]), np.array([])
+            c.warn(f"{cache_key} failed ({type(exc).__name__}) -- null inside this box")
+            return np.array([]), np.array([]), False
 
     def world_points(name, frags):
-        """One layer, every box, concatenated."""
-        lats, lons = [], []
+        """One layer, every box, concatenated, with the places it can speak for.
+
+        Surveyed worldwide, but still not everywhere: a place outside every box
+        that answered gets null rather than the distance to the nearest feature
+        in some other hemisphere. That is how Brasov was once told its closest
+        ski resort was 2,146 km away in the Pyrenees.
+        """
+        lat_parts, lon_parts, answered = [], [], []
         for key, bbox in boxes.worldwide().items():
-            a, b = points(f"osm_{name}_{key}_v1", frags, bbox)
+            a, b, ok = points(f"osm_{name}_{key}_v1", frags, bbox)
+            if ok:
+                answered.append(bbox)
             if len(a):
-                lats.append(a)
-                lons.append(b)
-        if not lats:
-            return np.array([]), np.array([])
-        lat, lon = np.concatenate(lats), np.concatenate(lons)
-        c.log(f"{name}: {len(lat)} features across all boxes", 1)
-        return lat, lon
+                lat_parts.append(a)
+                lon_parts.append(b)
+        lat = np.concatenate(lat_parts) if lat_parts else np.array([])
+        lon = np.concatenate(lon_parts) if lon_parts else np.array([])
+        c.log(f"{name}: {len(lat)} features across {len(answered)} boxes", 1)
+        d, _ = c.nearest_grid(lats, lons, lat, lon)
+        return d, _in_boxes(lats, lons, answered)
 
-    beach = world_points("beach", ["node[natural=beach]", "way[natural=beach]"])
-    park = world_points("park", ['way[boundary=protected_area]["protect_class"~"^[1-5]$"]',
-                                 "relation[boundary=national_park]"])
-    ski = world_points("ski", ['way["landuse"="winter_sports"]',
-                               'node["landuse"="winter_sports"]'])
-
-    beach_km, _ = c.nearest(lats, lons, *beach)
-    park_km, _ = c.nearest(lats, lons, *park)
-    ski_km, _ = c.nearest(lats, lons, *ski)
-
-    # Surveyed worldwide now, but still not everywhere: a place outside every
-    # box gets null rather than the distance to the nearest feature in some
-    # other hemisphere. That is the failure this flag exists to prevent, and it
-    # is how Brasov once came to be told its closest ski resort was 2,146 km
-    # away in the Pyrenees.
-    surveyed = _in_boxes(lats, lons, boxes.all_boxes())
-    c.log(f"{int(surveyed.sum())} places inside a surveyed box, "
-          f"{int((~surveyed).sum())} outside it get null", 1)
+    beach_km, beach_ok = world_points("beach", ["node[natural=beach]", "way[natural=beach]"])
+    ski_km, ski_ok = world_points("ski", ['way["landuse"="winter_sports"]',
+                                          'node["landuse"="winter_sports"]'])
+    park_km, park_ok = nature_km(lats, lons)
+    surveyed = beach_ok & ski_ok & park_ok
+    c.log(f"{int(surveyed.sum())} places inside every surveyed box, "
+          f"{int((~surveyed).sum())} outside at least one", 1)
 
     def fin(x, nd=1):
         return None if not np.isfinite(x) else round(float(x), nd)
 
     rows = {}
     for j, m in enumerate(munis):
-        local = bool(surveyed[j])
         rows[m["id"]] = {
             # DEM-derived, so correct across the whole continent.
             "coastKm": fin(coast_km[j]),
             "maxElev25km": fin(max_elev[j], 0),
             "relief25km": fin(max_elev[j] - min_elev[j], 0),
-            # Overpass-derived from an Iberian box: Spain only.
-            "beachKm": fin(beach_km[j] * 1.25) if local else None,
-            "parkKm": fin(park_km[j] * 1.25) if local else None,
-            "skiKm": fin(ski_km[j] * 1.25) if local else None,
-            "terrainPoisSurveyed": local,
+            # OpenStreetMap-derived. A beach here is any mapped beach: sea, lake
+            # or river, which is why the coast score does not use it.
+            "beachKm": fin(beach_km[j] * 1.25) if beach_ok[j] else None,
+            "parkKm": fin(park_km[j] * 1.25) if park_ok[j] else None,
+            "skiKm": fin(ski_km[j] * 1.25) if ski_ok[j] else None,
+            "terrainPoisSurveyed": bool(surveyed[j]),
         }
 
     c.write_stage("terrain", rows)
@@ -190,13 +273,15 @@ def run():
     def fmt(v, unit="km"):
         return "n/a" if v is None else f"{v:.0f}{unit}"
 
-    c.log("terrain sanity (expected: Madrid ~300km inland, Bilbao ~5-10km, Gijon ~0-5km):", 1)
+    c.log("terrain sanity (expected: Madrid ~300km inland, Bilbao ~5-10km, Gijon ~0-5km;"
+          " protected nature within ~50 km of Madrid and ~25 km of Bilbao):", 1)
     for ine, label in (("ES-28079", "Madrid"), ("ES-48020", "Bilbao"), ("ES-33024", "Gijon"),
                        ("ES-27028", "Lugo"), ("ES-42173", "Soria"), ("ES-22190", "Jaca")):
         r = rows.get(ine)
         if r:
             c.log(f"  {label:<8} coast={fmt(r['coastKm']):>7}  maxElev25km={fmt(r['maxElev25km'], 'm'):>7}  "
-                  f"relief={fmt(r['relief25km'], 'm'):>7}  ski={fmt(r['skiKm']):>7}", 1)
+                  f"relief={fmt(r['relief25km'], 'm'):>7}  ski={fmt(r['skiKm']):>7}  "
+                  f"nature={fmt(r['parkKm']):>7}", 1)
 
     if n_coast == 0:
         c.warn("no coast distances resolved -- the DEM land mask is wrong")
