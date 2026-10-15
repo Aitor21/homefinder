@@ -15,6 +15,77 @@ interface Columnar {
   cols: Record<string, Array<number | string | null | number[]>>;
 }
 
+const foldName = (v: string | undefined) =>
+  String(v ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+    // Words GeoNames appends to the same place under a second entry.
+    .replace(/\b(city|town|gemeinde|stadt|municipality)\b/g, '')
+    .replace(/[^a-z]/g, '');
+
+/** Edit distance, capped: anything past `cap` is simply "different". */
+function editDistance(a: string, b: string, cap = 3): number {
+  if (Math.abs(a.length - b.length) > cap) return cap + 1;
+  let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i];
+    let best = i;
+    for (let j = 1; j <= b.length; j++) {
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+      best = Math.min(best, cur[j]);
+    }
+    if (best > cap) return cap + 1;
+    prev = cur;
+  }
+  return prev[b.length];
+}
+
+/** Two entries closer than this, with near-identical names, are one place. */
+const SAME_PLACE_KM = 1.5;
+
+/**
+ * Drop the second copy of places GeoNames lists twice.
+ *
+ * "Costa de Caparica" and "Costa da Caparica" 300 m apart are one town, and
+ * showing both in a top ten wastes a slot and reads as a bug. Deliberately
+ * narrow: the names must match up to a couple of letters AND sit within
+ * 1.5 km. Plenty of genuinely separate towns are that close (Nancy and
+ * Villers-lès-Nancy, Mödling and Maria Enzersdorf) and none of them has a
+ * near-identical name. The larger entry is kept.
+ */
+export function mergeDuplicates(towns: Town[]): Town[] {
+  const cell = (lat: number, lon: number) => `${Math.floor(lat * 50)}|${Math.floor(lon * 50)}`;
+  const grid = new Map<string, number[]>();
+  // Rows without coordinates cannot be compared, and are left alone.
+  const placed = (t: Town) => Number.isFinite(t.lat) && Number.isFinite(t.lon);
+  towns.forEach((t, i) => {
+    if (!placed(t)) return;
+    const k = cell(t.lat, t.lon);
+    const list = grid.get(k);
+    if (list) list.push(i);
+    else grid.set(k, [i]);
+  });
+  const drop = new Set<number>();
+  const names = towns.map((t) => foldName(t.name));
+  towns.forEach((t, i) => {
+    if (drop.has(i) || !placed(t) || !names[i]) return;
+    const cy = Math.floor(t.lat * 50);
+    const cx = Math.floor(t.lon * 50);
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        for (const j of grid.get(`${cy + dy}|${cx + dx}`) ?? []) {
+          if (j <= i || drop.has(j)) continue;
+          const u = towns[j];
+          if (u.country !== t.country) continue;
+          const km = Math.hypot((t.lat - u.lat) * 111, (t.lon - u.lon) * 111 * Math.cos((t.lat * Math.PI) / 180));
+          if (km > SAME_PLACE_KM) continue;
+          if (editDistance(names[i], names[j], 2) > 2) continue;
+          drop.add(u.pop > t.pop ? i : j);
+        }
+      }
+    }
+  });
+  return drop.size ? towns.filter((_, i) => !drop.has(i)) : towns;
+}
+
 export function hydrate(doc: Columnar | Dataset): Dataset {
   // Older row-based files still load unchanged.
   if (!('format' in doc) || !String(doc.format).startsWith('columnar')) {
@@ -33,7 +104,7 @@ export function hydrate(doc: Columnar | Dataset): Dataset {
     }
     towns[i] = t as unknown as Town;
   }
-  return { meta, towns };
+  return { meta, towns: mergeDuplicates(towns) };
 }
 
 /** A gzip member always begins with these two bytes. */

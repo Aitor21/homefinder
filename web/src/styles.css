@@ -656,7 +656,6 @@ details.fold > summary .link { margin-left: auto; }
 
 /* ===================================================== result cards (phone) */
 
-.cards { list-style: none; margin: 0; padding: 8px; display: flex; flex-direction: column; gap: 8px; }
 .card {
   background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
   padding: 10px 12px; cursor: pointer;
@@ -672,6 +671,109 @@ details.fold > summary .link { margin-left: auto; }
 .cscore b { font: 700 15px var(--mono); }
 .cscore .bar { width: 52px; min-width: 0; }
 .card .held { margin-bottom: 6px; }
+
+/* ===================================================== suggestions
+
+   A suggestion reads top to bottom: who and where, how it ranks, then WHY in
+   a line or three, then the facts. The why is the part a score cannot say. */
+
+.cards { list-style: none; margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 10px; padding: 10px; }
+.card { transition: border-color .12s, box-shadow .12s; outline: none; }
+.card:hover { border-color: #c4cfdd; box-shadow: 0 2px 10px rgba(20, 30, 50, .06); }
+.card:focus-visible { box-shadow: 0 0 0 3px rgba(31, 111, 235, .25); }
+.cscore { align-items: center; }
+.scorepill {
+  display: inline-block; min-width: 34px; text-align: center; padding: 3px 7px; border-radius: 8px;
+  font: 700 14px var(--mono); color: #fff; background: #8b95a1;
+}
+.scorepill.s-top { background: #2d7dd2; }
+.scorepill.s-good { background: #3f9b7a; }
+.scorepill.s-mid { background: #c9a23a; }
+.scorepill.s-low { background: #c46a4f; }
+.share { font-size: 10px; color: var(--ink-3); white-space: nowrap; }
+.gemline { margin: -2px 0 4px; }
+
+.why { list-style: none; margin: 2px 0 7px; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.why li { font-size: 12.5px; line-height: 1.4; color: var(--ink); }
+.why li span[aria-hidden] {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 15px; height: 15px; border-radius: 50%; font-size: 10px; font-weight: 800; margin-right: 4px;
+  vertical-align: 1px;
+}
+.why li.strength span[aria-hidden] { background: #e2f3ea; color: #1c6b46; }
+.why li.tradeoff { color: var(--ink-2); }
+.why li.tradeoff span[aria-hidden] { background: #fdeee0; color: #9a5b1c; }
+.why.big li { font-size: 13px; padding: 3px 0; }
+.why.big .subtle { font-size: 10.5px; }
+.detail .hint { font-size: 11px; color: var(--ink-3); line-height: 1.45; margin: 4px 0 8px; }
+td.whytd { text-align: left; }
+.whycell { display: inline-block; max-width: 230px; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; color: var(--ink-2); }
+
+.seg.mini { margin: 0; flex-wrap: nowrap; }
+.seg.mini button { font-size: 11.5px; padding: 4px 10px; }
+
+.morebar { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 6px 12px 18px; }
+
+/* --- areas ------------------------------------------------------------ */
+.areas { list-style: none; margin: 0; padding: 10px; display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 10px; }
+.area, .card { min-width: 0; }
+.area { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
+.ahead { display: flex; align-items: center; gap: 9px; margin-bottom: 6px; }
+.ahead .rank { font: 11px var(--mono); color: var(--ink-3); width: 22px; text-align: right; flex-shrink: 0; }
+.ahead b { font-size: 14px; }
+.abest {
+  display: block; width: 100%; text-align: left; font: inherit; font-size: 13px; cursor: pointer;
+  border: 0; background: var(--accent-soft); color: var(--ink); border-radius: 8px; padding: 6px 9px; margin-bottom: 5px;
+}
+.abest:hover { background: #dbe8fd; }
+.alts { display: flex; flex-wrap: wrap; gap: 4px; }
+.alt {
+  font: inherit; font-size: 11.5px; padding: 3px 8px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--panel); color: var(--ink-2);
+}
+.alt:hover, .alt.on { border-color: var(--accent); color: var(--accent); }
+.alt.more { border-style: dashed; color: var(--accent); }
+
+/* --- town panel -------------------------------------------------------- */
+.tabs {
+  display: flex; gap: 2px; margin: 4px 0 6px; padding: 3px; border-radius: 9px; background: var(--line-2);
+  position: sticky; top: 0; z-index: 3;
+}
+.tabs button {
+  flex: 1; border: 0; background: transparent; font: inherit; font-size: 12px; cursor: pointer;
+  padding: 6px 4px; border-radius: 7px; color: var(--ink-2);
+}
+.tabs button.on { background: var(--panel); color: var(--ink); font-weight: 650; box-shadow: 0 1px 2px rgba(0, 0, 0, .08); }
+.dlinks { margin: 10px 0 0; }
+
+.schart { display: flex; flex-direction: column; gap: 5px; }
+.srow { display: grid; grid-template-columns: 1fr 44px 92px 26px; gap: 8px; align-items: center; font-size: 11.5px; }
+.slbl { color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.srow.weak .slbl { color: var(--hot); font-weight: 600; }
+.sw { display: flex; gap: 2px; }
+.sw i { width: 6px; height: 6px; border-radius: 50%; background: var(--line); }
+.sw i.on { background: var(--ink-2); }
+.sw i.half { background: #b5bdc8; }
+.sbar { height: 7px; border-radius: 4px; background: var(--line-2); overflow: hidden; }
+.sbar i { display: block; height: 100%; border-radius: 4px; }
+.sbar i.hi { background: var(--good); }
+.sbar i.mid { background: #d6b04c; }
+.sbar i.lo { background: var(--hot); }
+.snum { text-align: right; font: 11px var(--mono); color: var(--ink-3); }
+.snote { margin-top: 6px; line-height: 1.45; }
+
+/* --- map --------------------------------------------------------------- */
+.pin span {
+  display: flex; align-items: center; justify-content: center; width: 24px; height: 24px;
+  border-radius: 50%; background: #1a1d21; color: #fff; font: 700 11px var(--mono);
+  border: 2px solid #fff; box-shadow: 0 1px 4px rgba(0, 0, 0, .35);
+}
+.pin.sel span { background: var(--accent); transform: scale(1.2); }
+.fitbtn {
+  width: 34px; height: 34px; font-size: 17px; cursor: pointer; border-radius: 4px;
+  border: 2px solid rgba(0, 0, 0, .2); background: #fff; color: var(--ink); background-clip: padding-box;
+}
+.fitbtn:hover { background: #f4f4f4; }
 
 /* Hidden on desktop, where the sidebar is always visible and the header has
    room for everything. */
@@ -779,6 +881,9 @@ aside .homesel { display: none; }
   .layers .hint { display: none; }
 
   .tablewrap { -webkit-overflow-scrolling: touch; }
+  .cards, .areas { grid-template-columns: 1fr; padding: 8px; gap: 8px; }
+  .searchbar { flex-wrap: wrap; }
+  .searchbar input { flex-basis: 100%; }
   table { font-size: 11px; }
   thead th, tbody td { padding: 6px 7px; }
 
@@ -802,7 +907,10 @@ aside .homesel { display: none; }
     content: ''; position: absolute; top: 5px; left: 50%; width: 36px; height: 4px;
     margin-left: -18px; border-radius: 2px; background: var(--line);
   }
-  .dactions { position: sticky; top: 52px; z-index: 1; background: var(--panel); padding: 4px 0 8px; margin-bottom: 8px; }
+  /* Only the name and close button stick on a phone: a stack of sticky bars
+     would eat half the sheet. */
+  .tabs { position: static; }
+  .dactions { margin-bottom: 8px; }
   .dactions > * { flex: 1; justify-content: center; text-align: center; }
 
   /* --- bottom navigation --------------------------------------------- */

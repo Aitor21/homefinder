@@ -28,6 +28,7 @@ import { SearchSummary } from './ui/QuickControls';
 import { useMedia } from './ui/bits';
 import { describeSearch, type QuickAnswers, type Search } from './quickstart';
 import { EVENTS } from './culture';
+import { typicalOf, type ExplainCtx } from './explain';
 
 /**
  * Three ways to read the same ranking:
@@ -249,6 +250,16 @@ export default function App() {
   }, [ranked, gemModel]);
 
   const rows = mode === 'near' ? near : mode === 'gems' ? gems : ranked;
+
+  // "Typical" for the reasons is always the main ranking: a near miss or a gem
+  // stands out against what you would otherwise be shown.
+  const typical = useMemo(() => typicalOf(ranked), [ranked]);
+  const explainCtx = useMemo<ExplainCtx>(
+    () => ({
+      weights, typical, budget: filters.budget, summerTarget: filters.summerTarget, homeIndex, homeName,
+    }),
+    [weights, typical, filters.budget, filters.summerTarget, homeIndex, homeName],
+  );
 
   const sel = useMemo<Ranked | null>(() => {
     if (!selected) return null;
@@ -558,6 +569,7 @@ export default function App() {
             showPets={weights.pets > 0}
             compact={phone}
             liked={liked}
+            explain={explainCtx}
             selected={selected}
             onSelect={setSelected}
           />
@@ -570,6 +582,8 @@ export default function App() {
               wouldRank={sel.forgiven != null ? wouldRank(ranked, sel.forgiven) : null}
               rankNow={sel.forgiven != null || sel.excluded ? wouldRank(ranked, sel.score) : null}
               filters={filters}
+              weights={weights}
+              explain={explainCtx}
               env={env}
               gemModel={gemModel}
               refs={refs}

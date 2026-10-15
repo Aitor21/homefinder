@@ -64,6 +64,45 @@ wider screen), the town panel is a near-full-height sheet with its name and
 close button pinned, and the filters are a full-width drawer with a *Show
 results* button that always says how many there are.
 
+## Why each suggestion, not just a score
+
+The top fifty of a search usually sit within three points of each other, so
+an 83 cannot tell you why one place rather than the next. Every suggestion now
+says it in words, with the number behind each claim:
+
+> ✓ ~€1,565/m², your budget buys 192 m²
+> ✓ 26° summers, right on your 26°
+> ✓ Aste Nagusia, BBK Live +3 more
+> ! 2 h 10 to a hub airport
+
+Reasons are measured against the *typical place in your own results*, on what
+you weight. "5 km from the sea" is only said when the rest of your list is not
+also by the sea. A trade-off is only named on something you actually care
+about, meaning a weight you raised or one that is heavy anyway, so a seaside
+town is not marked down as "flat" for someone who never asked for mountains.
+`explain.ts` holds the logic.
+
+**Areas, not fifty suburbs.** Neighbouring towns share a climate, an airport
+and a coast, so a ranking's top is often one metropolitan fringe many times
+over: in one test search, the top 50 came from four regions. The *Areas* view
+groups suggestions by region, each with its best place, the runners-up and the
+area's typical price and summer. *All 51 →* opens the full list for that
+area.
+
+**Cards by default, the table one tap away.** Cards lead with the reasons;
+the twenty-column table is still there under *Table*, with a "Stands out for"
+column. The town panel is split into Overview, Climate, Living and Buying.
+Overview's score chart shows only what counts, heaviest weight first, and names
+what was left out and why. The map numbers the top ten so a card and its pin
+agree, and follows your results until you move it yourself; ⤢ hands control
+back.
+
+**Duplicates merged.** GeoNames lists a handful of places twice (*Costa de
+Caparica* and *Costa da Caparica*, 300 m apart). Entries within 1.5 km whose
+names differ by at most two letters are merged on load, keeping the larger: 20
+of 31,538. Close but distinct towns (Nancy and Villers-lès-Nancy) are left
+alone.
+
 ## Culture and events
 
 Climate decides whether you can bear a place. What there is to do decides
@@ -1054,8 +1093,11 @@ web/               Vite + React + TypeScript + Leaflet
   src/listings.ts  portal deep links, CSV import, dormant API adapter
   src/quickstart.ts the four-tap start, its tiles as filter patches, the taste deck sample
   src/culture.ts   the festival registry, events and culture scores
+  src/explain.ts   why a place is suggested: strengths and trade-offs against your list
+  src/areas.ts     suggestions grouped by region
 ```
 
 `npm test` covers the scoring model, the filters, near misses, clocks and
 daylight, the gem regression, the questionnaire, the quick start, culture and
-events and the listing parsers: 175 tests, no I/O.
+events, the reasons, areas and duplicate merging, and the listing parsers:
+183 tests, no I/O.

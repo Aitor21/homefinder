@@ -127,3 +127,28 @@ export function useMedia(query: string): boolean {
   }, [query]);
   return on;
 }
+
+/**
+ * A small UI preference remembered in this browser: a layout, a grouping.
+ * Conveniences only, so a private window that cannot store them simply
+ * starts from the default every time.
+ */
+export function usePref<T extends string>(key: string, initial: T, allowed: readonly T[]): [T, (v: T) => void] {
+  const [v, setV] = useState<T>(() => {
+    try {
+      const s = localStorage.getItem(key) as T | null;
+      return s && allowed.includes(s) ? s : initial;
+    } catch {
+      return initial;
+    }
+  });
+  const set = (next: T) => {
+    setV(next);
+    try {
+      localStorage.setItem(key, next);
+    } catch {
+      /* not remembered, still applied */
+    }
+  };
+  return [v, set];
+}
