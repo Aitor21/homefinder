@@ -18,6 +18,12 @@ import {
 import { forgivable, relaxFor, severity } from '../nearmiss';
 import { DIM_LABEL, heldLabel } from './labels';
 import ClimateChart from './ClimateChart';
+import { Highlights } from './bits';
+import {
+  cultureEstimate, eventsNear, EVENT_KIND_ICON, EVENT_KIND_LABEL, EVENTS, formatMonths,
+  venuesSurveyed,
+} from '../culture';
+import { flag } from '../quickstart';
 
 interface Props {
   ranked: Ranked;
@@ -142,11 +148,14 @@ export default function TownDetail({
   const thin = t.servicesMapped != null && t.servicesMapped < THIN_MAPPING;
   const vetsThin = t.vetsMapped != null && t.vetsMapped < THIN_MAPPING;
 
+  const events = eventsNear(t);
+  const venues = venuesSurveyed(t);
+
   return (
     <>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
+      <div className="dhead">
         <div>
-          <h2>{t.name}</h2>
+          <h2><span className="cflag" aria-hidden>{flag(t.country)}</span> {t.name}</h2>
           <div className="where">
             {t.province} {'·'} {t.countryName} {'·'} {n0(t.pop)} people {'·'} {t.elev} m
           </div>
@@ -156,9 +165,25 @@ export default function TownDetail({
             </div>
           )}
         </div>
-        <button className="link" onClick={onClose}>
-          close
+        <button className="closebtn" onClick={onClose} aria-label="Close">
+          ✕
         </button>
+      </div>
+
+      <Highlights town={t} max={8} />
+      <div className="dactions">
+        <button
+          className={isFavourite ? 'likebtn on' : 'likebtn'}
+          onClick={() => onToggleFavourite(t)}
+          aria-pressed={isFavourite}
+        >
+          {isFavourite ? '♥ You’d live here' : '♡ I’d live here'}
+        </button>
+        {links[0] && (
+          <a className="chipbtn" href={links[0].url} target="_blank" rel="noreferrer">
+            Homes for sale {'→'}
+          </a>
+        )}
       </div>
 
       {/* Why a place is not in the main list, and what it would take. */}
@@ -438,6 +463,68 @@ export default function TownDetail({
         <span className="k">Ski area</span>
         <span className="v">{t.skiKm == null ? 'not surveyed' : km(t.skiKm)}</span>
       </div>
+
+      <h4>Culture &amp; events</h4>
+      <div className="kv">
+        <span className="k">Museums, theatre &amp; live music</span>
+        <span className="v">{Math.round(ranked.breakdown.culture * 100)}/100</span>
+        {venues ? (
+          <>
+            <span className="k">Museums within 15 km</span>
+            <span className="v">{n0(t.museum15km)}</span>
+            <span className="k">Theatres &amp; concert halls</span>
+            <span className="v">{n0(t.theatre15km)}{t.theatreKm != null && t.theatre15km === 0 && ` (nearest ${km(t.theatreKm)})`}</span>
+            <span className="k">Live music &amp; clubs</span>
+            <span className="v">{n0(t.music15km)}</span>
+            <span className="k">Arts centres &amp; galleries</span>
+            <span className="v">{n0(t.arts15km)}</span>
+            <span className="k">Nearest cinema</span>
+            <span className="v">{km(t.cinemaKm)}</span>
+          </>
+        ) : (
+          <>
+            <span className="k">Estimated from</span>
+            <span className="v" title="Venue counts are not in this build of the data yet">
+              size and nearby cities
+            </span>
+          </>
+        )}
+      </div>
+      {!venues && (
+        <div className="note">
+          Theatres, museums and venues have not been counted for this place yet, so this is an
+          {' '}<b>estimate</b> ({Math.round(cultureEstimate(t) * 100)}/100) from how big it is and how
+          close it sits to a city of 250,000, which reliably has both. It cannot tell a lively small
+          town from a sleepy one; the venue survey can, and replaces it once run.
+        </div>
+      )}
+      {events.length > 0 ? (
+        <ul className="events">
+          {events.slice(0, 10).map(({ event: e, km: d }) => (
+            <li key={e.name + e.where}>
+              <span className="eico" aria-hidden title={EVENT_KIND_LABEL[e.kind]}>{EVENT_KIND_ICON[e.kind]}</span>
+              <span className="ename">
+                <b>{e.name}</b>
+                {e.scale === 'major' && <span className="pill measured">major</span>}
+                <span className="subtle">
+                  {' '}{e.where} {'·'} {formatMonths(e.months)}
+                  {e.note && <> {'·'} {e.note}</>}
+                </span>
+              </span>
+              <span className="ekm">{d < 3 ? 'here' : `${Math.round(d)} km`}</span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <div className="hint">None of the {EVENTS.length} big festivals and fiestas we track is within 100 km.</div>
+      )}
+      {events.length > 0 && (
+        <div className="hint">
+          The big recurring festivals, fiestas and seasons within 100 km, as the crow flies. Not
+          every event: the list is the {EVENTS.length} large ones people travel for, and months move by a
+          few weeks between editions.
+        </div>
+      )}
 
       <h4>Connections</h4>
       <div className="kv">

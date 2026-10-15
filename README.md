@@ -13,6 +13,95 @@ whether you may legally buy there, and whether you may legally live there. Then
 it hands you a pre-filtered link into a property portal for the ones worth a
 look.
 
+## Four taps to a ranked list
+
+The first visit used to open on a questionnaire that asked you to grade cities
+from a list of a hundred and fifty, worldwide, before you had seen a single
+result. It is precise, and for someone arriving cold it is a wall. Now the
+first visit asks four things anyone can answer without thinking, each with one
+tap on a tile:
+
+1. **Where would you consider?** Anywhere, Europe, wherever an EU passport is
+   enough, or only your own country.
+2. **What summer?** Fresh, mild, warm or hot, each with real places you have
+   heard of as examples ("like Bilbao, Porto, Paris"), picked nearest home.
+   Hot is as valid an answer as cool.
+3. **What would you love around you?** Sixteen tiles, pick any: beach,
+   mountains, nature, museums and theatre, festivals and live music, big-city
+   buzz or a quiet small town, sunshine, mild winters, skiing, low cost of
+   living, remote work, car-free life, flying often, a dog, safety.
+4. **Roughly what can you spend?** Four budgets and three sizes.
+
+A live count shows how many places are still in play at every step, and the
+results come straight after. Single-choice screens move on by themselves: a
+Next button after a tap is a second tap that says nothing.
+
+**Then it learns from places, one at a time.** *Taste check* shows ten varied
+places from your results, one card each: the year's temperatures as twelve
+bars and the handful of facts that make the place itself (the sea, the
+mountains, its festivals, the airport, the price). Swipe right or tap *I'd
+live here*. Three yeses and the taste model below starts ranking everything by
+what they share. The ten are picked to differ from each other, by climate,
+coast, relief, size, culture and country, because the top ten of a ranking is
+usually one region ten times over, and liking ten neighbours teaches nothing
+but that you like that region.
+
+**Fine-tuning is still all there, just not in the way.** The same four
+questions sit at the top of the filter panel as tiles, and every slider is
+folded into a section below them. The tiles are patches on the real filters
+and weights, not a second copy of your answers, so they cannot drift: a tile is
+lit because the filters say so. Above the results, the search reads as a row of
+chips (*Europe · Mild summers · Beach & sea · ≤ €300k*), each removable in one
+tap. The whole search is saved locally, so fine-tuning survives a reload.
+
+The original questionnaire is kept as *Calibrate with places you know*, for
+anyone who would rather set their limits from cities they have lived in.
+
+**On a phone it is an app, not a squeezed desktop.** One view at a time, the
+list or the map, switched from a bar at the bottom where a thumb reaches.
+Results are cards rather than a twenty-column table (which is still there on a
+wider screen), the town panel is a near-full-height sheet with its name and
+close button pinned, and the filters are a full-width drawer with a *Show
+results* button that always says how many there are.
+
+## Culture and events
+
+Climate decides whether you can bear a place. What there is to do decides
+whether you enjoy it, and the tool had nothing to say about that. Two new
+weights do, *Museums, theatre & live music* and *Festivals & big events*, each
+switched on by its tile in the quick start.
+
+**Festivals are a registry, because a festival is not on a map.** It is a place
+and a month. 333 large recurring events across the dataset's countries, from
+Primavera Sound, BBK Live and Las Fallas to Fuji Rock, the Edinburgh Fringe,
+Montreux, Día de Muertos in Oaxaca and Womadelaide, each with its host town,
+usual months and whether it is major (people fly in) or notable (they drive).
+Distances are computed in the browser, so adding one needs no pipeline run.
+Each place scores by what is within 100 km, weighted by scale and closeness and
+saturating, so a city with six festivals reads as "always something on" rather
+than six times better than one with one. The town panel lists them with their
+months, and the map has a *Festivals* layer. The list is the big ones only, and
+the panel says so: zero means none of the big ones, never "nothing happens
+here".
+
+**Venues come from OpenStreetMap, through a new `culture` stage:** museums;
+theatres, opera houses and concert halls; cinemas; live music venues and
+clubs; arts centres and galleries; each as a distance and a count within
+15 km, scored on a log scale. It needs Overpass and has not been run for the
+dataset currently committed, so until it is, culture is an **estimate** from
+city size: how big the place is, or how close it sits to a city of 250,000,
+which reliably has a theatre and a museum. That cannot tell a lively small
+town from a sleepy one, and the panel says it is an estimate. Running
+
+```bash
+python pipeline/build.py --stage culture && python pipeline/emit.py
+```
+
+replaces the estimate with the counts wherever they exist, with no change to
+the web app. Countries whose own big towns barely map their venues keep the
+estimate, for the same reason thinly mapped shops drop out of the services
+score.
+
 ## Buying and living are two different questions
 
 Almost every relocation tool collapses them. They come apart constantly:
@@ -477,7 +566,8 @@ What did not work as intended:
 
 ## The questionnaire
 
-The first thing the app asks is not "how many days above 30 °C can you tolerate?", nobody knows that. It asks which places you have actually lived in and found
+Now the advanced route, under *Calibrate with places you know*; the first
+visit uses the four-tap quick start above. What it asks is not "how many days above 30 °C can you tolerate?", nobody knows that. It asks which places you have actually lived in and found
 unbearable, then reads their real measurements out of the dataset and derives
 your thresholds from them.
 
@@ -839,6 +929,8 @@ measured and 4,210 modelled.
 | Shops, pharmacies, hospitals | OpenStreetMap via Overpass | worldwide: 458,406 supermarkets, 423,347 pharmacies, 299,929 hospitals and clinics |
 | Vets and dog parks | OpenStreetMap via Overpass | worldwide: 60,727 vets, 28,299 dog parks |
 | Schools, cycleways | OpenStreetMap via Overpass | Spain |
+| Museums, theatres, cinemas, live music, arts | OpenStreetMap via Overpass, `culture` stage | worldwide once run; estimated from city size until then |
+| Festivals and big events | Curated registry in `web/src/culture.ts` | 333 events, usual months, indicative |
 | Time zones | GeoNames IANA zones, offsets computed in the browser | worldwide |
 | Safety | UNODC intentional homicide rates via the World Bank | 95 of 101 countries, national |
 | Bringing a pet in | National veterinary authorities, Sep 2026 | 94 countries, for an animal travelling from the EU |
@@ -952,7 +1044,7 @@ told its nearest station was in Portugal.
 pipeline/          Python. Run occasionally; resumable and cached.
   common.py        HTTP caching, vectorised geo maths, name normalisation
   build.py         stage orchestrator
-  stages/          places, worldclim, climate, access, amenities, terrain, prices
+  stages/          places, worldclim, climate, access, amenities, culture, terrain, prices
   emit.py          merges everything into web/public/data/towns.json (columnar)
 web/               Vite + React + TypeScript + Leaflet
   src/scoring.ts   the weighted model and every filter, pure and unit-tested
@@ -960,8 +1052,10 @@ web/               Vite + React + TypeScript + Leaflet
   src/clock.ts     time differences, daylight, distance from home
   src/gems.ts      ridge-regularised residual regression
   src/listings.ts  portal deep links, CSV import, dormant API adapter
+  src/quickstart.ts the four-tap start, its tiles as filter patches, the taste deck sample
+  src/culture.ts   the festival registry, events and culture scores
 ```
 
 `npm test` covers the scoring model, the filters, near misses, clocks and
-daylight, the gem regression, the questionnaire and the listing parsers: 152
-tests, no I/O.
+daylight, the gem regression, the questionnaire, the quick start, culture and
+events and the listing parsers: 175 tests, no I/O.

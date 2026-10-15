@@ -13,6 +13,9 @@ import { severity, wouldRank } from '../nearmiss';
 import { OWNERSHIP_LABEL } from '../types';
 import type { Mode } from '../App';
 import { heldLabel } from './labels';
+import { eventsNear } from '../culture';
+import { flag } from '../quickstart';
+import { Highlights } from './bits';
 
 interface Props {
   /** The rows to show: the ranking, the near misses or the gems. */
@@ -37,6 +40,10 @@ interface Props {
   workTz: string | null;
   /** Show the dog column: only once someone has said they care. */
   showPets: boolean;
+  /** A phone: cards rather than a twenty-column table. */
+  compact?: boolean;
+  /** Places the user liked, marked with a heart. */
+  liked?: ReadonlySet<string>;
   selected: string | null;
   onSelect: (ine: string) => void;
 }
@@ -263,6 +270,28 @@ const BASE_COLUMNS: Col[] = [
       );
     },
   },
+  {
+    key: 'culture',
+    label: 'Culture',
+    title: 'Museums, theatres, cinemas and live music within reach. Estimated from city size until the venue survey has run',
+    get: (r) => r.breakdown.culture,
+    render: (r) => <Bar v={r.breakdown.culture * 100} />,
+  },
+  {
+    key: 'fests',
+    label: 'Fests',
+    title: 'Big recurring festivals and events within 100 km',
+    get: (r) => eventsNear(r.town).length,
+    render: (r) => {
+      const ev = eventsNear(r.town);
+      if (!ev.length) return '';
+      return (
+        <span title={ev.slice(0, 8).map((e) => `${e.event.name} (${Math.round(e.km)} km)`).join(', ')}>
+          {ev.length}
+        </span>
+      );
+    },
+  },
   { key: 'city', label: 'City km', get: (r) => r.town.city100kKm },
   { key: 'pop', label: 'Pop', get: (r) => r.town.pop, render: (r) => n0(r.town.pop) },
 ];
@@ -312,7 +341,7 @@ const fold = (v: string) =>
 
 export default function TownTable({
   ranked, base, all, reject, mode, gemModel, compare, refs, affinity, dist, homeIndex,
-  workTz, showPets, selected, onSelect,
+  workTz, showPets, compact, liked, selected, onSelect,
 }: Props) {
   const [sort, setSort] = useState<{ key: string; dir: 1 | -1 } | null>(null);
   const [query, setQuery] = useState('');
@@ -447,6 +476,42 @@ export default function TownTable({
         </div>
       )}
 
+      {compact ? (
+        <ol className="cards">
+          {rows.map((r, i) => (
+            <li
+              key={r.town.id}
+              className={r.town.id === selected ? 'card sel' : 'card'}
+              onClick={() => onSelect(r.town.id)}
+            >
+              <div className="crow">
+                <span className="rank">{i + 1}</span>
+                <span className="cflag" aria-hidden>{flag(r.town.country)}</span>
+                <div className="cname">
+                  <b>{r.town.name}</b>
+                  {liked?.has(r.town.id) && <span className="heart" title="You liked this"> ♥</span>}
+                  <div className="subtle">{r.town.province} {'·'} {r.town.countryName}</div>
+                </div>
+                <div className="cscore" title={mode === 'near' ? 'Would score, with what holds it back set aside' : 'Score'}>
+                  <b>{Math.round(mode === 'near' ? r.forgiven ?? r.score : r.score)}</b>
+                  <span className="bar"><i style={{ width: `${Math.max(0, Math.min(100, mode === 'near' ? r.forgiven ?? r.score : r.score))}%` }} /></span>
+                </div>
+              </div>
+              {mode === 'near' && <HeldChips held={r.held} town={r.town} />}
+              {mode === 'gems' && (() => {
+                const d = discountPct(gemModel, r.town);
+                return d == null ? null : (
+                  <div className="subtle">
+                    <span className={d > 0 ? 'discount' : ''}>{d > 0 ? `${d.toFixed(0)}% under` : `${(-d).toFixed(0)}% over`}</span>{' '}
+                    its modelled fair price
+                  </div>
+                );
+              })()}
+              <Highlights town={r.town} max={4} />
+            </li>
+          ))}
+        </ol>
+      ) : (
       <table>
         <thead>
           <tr>
@@ -502,6 +567,7 @@ export default function TownTable({
           ))}
         </tbody>
       </table>
+      )}
       {/* Counts the searched set, not the whole ranking: after a search for one
           town, "top 1 of 8,235" was both true and useless. */}
       {hits.length > rows.length && (

@@ -155,6 +155,28 @@ export interface Town {
   /** False where beach, nature or ski were not surveyed for this place. */
   terrainPoisSurveyed: boolean;
 
+  // culture -- OpenStreetMap, from the `culture` pipeline stage. Optional:
+  // a dataset built before that stage existed has none of these, and the
+  // culture score falls back to an estimate from city size (see culture.ts).
+  /** Nearest museum, and how many within 15 km. */
+  museumKm?: number | null;
+  museum15km?: number | null;
+  /** Theatres, opera houses and concert halls. */
+  theatreKm?: number | null;
+  theatre15km?: number | null;
+  cinemaKm?: number | null;
+  cinema15km?: number | null;
+  /** Live music venues and clubs. */
+  musicKm?: number | null;
+  music15km?: number | null;
+  /** Arts centres and galleries. */
+  artsKm?: number | null;
+  arts15km?: number | null;
+  /** The culture layers were queried here. */
+  cultureSurveyed?: boolean;
+  /** How densely the country's own big towns map culture, against the median country. */
+  cultureMapped?: number | null;
+
   // safety
   /**
    * Intentional homicides per 100,000 people, national, UNODC via the World
@@ -373,6 +395,10 @@ export interface Weights {
   pets: number;
   /** Low national homicide rate. */
   safety: number;
+  /** Museums, theatres, cinemas and live music within reach. */
+  culture: number;
+  /** Festivals and big recurring events within reach: see culture.ts. */
+  events: number;
 }
 
 /** The maximum-population slider's top notch: at or above this, no upper limit. */
@@ -456,4 +482,9 @@ export const DEFAULT_WEIGHTS: Weights = {
   // National and coarse, so it is weighted modestly: it separates countries
   // whose rates differ tenfold, not one Spanish town from the next.
   safety: 3,
+  // Most people value an evening out a little, so culture starts low rather
+  // than off, like nature. Festivals are specific to some people and start at
+  // zero; the quick start switches either on for those who ask.
+  culture: 2,
+  events: 0,
 };

@@ -5,6 +5,8 @@ import { explain, MIN_PICKS, type Affinity } from '../affinity';
 import { DEFAULT_FILTERS, DEFAULT_WEIGHTS } from '../types';
 import { rebaseCost } from '../home';
 import { deviceTimeZone } from '../clock';
+import type { Search } from '../quickstart';
+import QuickControls from './QuickControls';
 
 interface Props {
   filters: Filters;
@@ -27,7 +29,16 @@ interface Props {
   onWorkTz: (tz: string | null) => void;
   onFilters: (f: Filters) => void;
   onWeights: (w: Weights) => void;
+  /** Filters and weights together, for the quick tiles that patch both. */
+  onSearch: (s: Search) => void;
+  /** The precise questionnaire. */
   onOpenWizard: () => void;
+  /** Back to the four-tap start. */
+  onStartOver: () => void;
+  /** Where the user lives; repeated here because a phone has no room for it in the header. */
+  home: string | null;
+  homeList: Array<{ cc: string; name: string }>;
+  onHome: (cc: string | null) => void;
 }
 
 function Slider(props: {
@@ -85,26 +96,49 @@ export default function FilterPanel(p: Props) {
   const drop = (key: 'favourites' | 'avoid', id: string) =>
     set({ [key]: f[key].filter((x) => x !== id) } as Partial<Filters>);
 
+  // A link inside a <summary> would also toggle the section it sits in.
+  const inSummary = (fn: () => void) => (e: React.MouseEvent) => {
+    e.preventDefault();
+    fn();
+  };
+
   return (
     <>
+      <label className="sel homesel">
+        <span className="name">I live in</span>
+        <select value={p.home ?? ''} onChange={(e) => p.onHome(e.target.value || null)}>
+          <option value="">not set</option>
+          {p.homeList.map((o) => (
+            <option key={o.cc} value={o.cc}>{o.name}</option>
+          ))}
+        </select>
+      </label>
+
+      <QuickControls
+        search={{ filters: f, weights: w }}
+        onSearch={p.onSearch}
+        home={p.home}
+        homeName={p.homeName}
+      />
+
+      <div className="foldhead">
+        <span>Fine-tune</span>
+        <span className="subtle">every number behind the tiles above</span>
+      </div>
+
       {p.notes.length > 0 && (
-        <div className="group">
-          <h3>
-            Your profile{' '}
-            <button className="link" onClick={p.onOpenWizard}>
-              edit
-            </button>
-          </h3>
+        <details className="group fold">
+          <summary>Why these settings</summary>
           <ul className="notes">
             {p.notes.map((n, i) => (
               <li key={i}>{n}</li>
             ))}
           </ul>
-        </div>
+        </details>
       )}
 
-      <div className="group">
-        <h3>Budget &amp; size</h3>
+      <details className="group fold">
+        <summary>Budget &amp; size, exactly</summary>
         <Slider
           name="Max budget"
           value={f.budget}
@@ -132,10 +166,10 @@ export default function FilterPanel(p: Props) {
           />
           Only officially priced towns
         </label>
-      </div>
+      </details>
 
-      <div className="group">
-        <h3>Summer</h3>
+      <details className="group fold">
+        <summary>Climate in detail</summary>
         <Slider
           name="Summer you want"
           value={f.summerTarget ?? 0}
@@ -198,10 +232,10 @@ export default function FilterPanel(p: Props) {
           hint="Sunrise to sunset on the shortest day. Oslo gets about 6 hours, Madrid 9, and above the Arctic Circle none at all."
           onChange={(v) => set({ minWinterDaylight: v })}
         />
-      </div>
+      </details>
 
-      <div className="group">
-        <h3>Getting out</h3>
+      <details className="group fold">
+        <summary>Getting around</summary>
         <Slider
           name="Drive to any airport"
           value={f.maxAirportMin}
@@ -274,10 +308,10 @@ export default function FilterPanel(p: Props) {
           <i> stops</i> are deliberately not: every village street has one and it tells you
           nothing, so this counts stations, which mean scheduled services actually call.
         </div>
-      </div>
+      </details>
 
-      <div className="group">
-        <h3>Living conditions</h3>
+      <details className="group fold">
+        <summary>Living conditions</summary>
         <Slider
           name="Broadband at least"
           value={f.minNetMbps}
@@ -316,10 +350,10 @@ export default function FilterPanel(p: Props) {
           hint="National, from UNODC via the World Bank: Japan 0.2, Spain 0.7, the United States 5.8. It separates countries, not one town from the next."
           onChange={(v) => set({ maxHomicide: v })}
         />
-      </div>
+      </details>
 
-      <div className="group">
-        <h3>Remote work &amp; family</h3>
+      <details className="group fold">
+        <summary>Remote work &amp; family</summary>
         <label className="sel">
           <span className="name">Your working clock</span>
           <select
@@ -359,10 +393,10 @@ export default function FilterPanel(p: Props) {
           }
           onChange={(v) => set({ maxHomeFlightH: v >= FLIGHT_ANY ? null : v })}
         />
-      </div>
+      </details>
 
-      <div className="group">
-        <h3>Moving with a pet</h3>
+      <details className="group fold">
+        <summary>Moving with a pet</summary>
         <label className="chk">
           <input
             type="checkbox"
@@ -378,10 +412,10 @@ export default function FilterPanel(p: Props) {
           town panel says what bringing an animal in takes. Raise the <b>Good for a dog</b>
           {' '}weight to rank by vets, walks and bearable summers.
         </div>
-      </div>
+      </details>
 
-      <div className="group">
-        <h3>Town size</h3>
+      <details className="group fold">
+        <summary>Town size</summary>
         <Slider
           name="Minimum population"
           value={f.minPop}
@@ -400,15 +434,15 @@ export default function FilterPanel(p: Props) {
           fmt={(v) => (v >= POP_ANY ? 'any' : v.toLocaleString())}
           onChange={(v) => set({ maxPop: v })}
         />
-      </div>
+      </details>
 
-      <div className="group">
-        <h3>
+      <details className="group fold">
+        <summary>
           Weights{' '}
-          <button className="link" onClick={() => p.onWeights({ ...DEFAULT_WEIGHTS })}>
+          <button className="link" onClick={inSummary(() => p.onWeights({ ...DEFAULT_WEIGHTS }))}>
             reset
           </button>
-        </h3>
+        </summary>
         {(
           [
             ['summerFit', 'Right kind of summer'],
@@ -429,6 +463,8 @@ export default function FilterPanel(p: Props) {
             ['ski', 'Ski slopes nearby'],
             ['pets', 'Good for a dog'],
             ['safety', 'Low homicide rate'],
+            ['culture', 'Museums, theatre & live music'],
+            ['events', 'Festivals & big events nearby'],
             ['affinity', 'Like my picks'],
           ] as Array<[keyof Weights, string]>
         ).map(([k, label]) => (
@@ -444,10 +480,10 @@ export default function FilterPanel(p: Props) {
         <div className="hint">
           Rain and winter cold start at zero, cold and wet are preferences here, not penalties.
         </div>
-      </div>
+      </details>
 
-      <div className="group">
-        <h3>Places you would live in</h3>
+      <details className="group fold">
+        <summary>Places you liked{favourites.length ? ` (${favourites.length})` : ''}</summary>
         {favourites.length ? (
           <div className="regions">
             {favourites.map((t) => (
@@ -483,7 +519,7 @@ export default function FilterPanel(p: Props) {
           </div>
         )}
 
-        <h3 style={{ marginTop: 14 }}>Climates you have ruled out</h3>
+        <h4 className="sub3">Climates you have ruled out</h4>
         {avoided.length ? (
           <div className="regions">
             {avoided.map((t) => (
@@ -499,17 +535,17 @@ export default function FilterPanel(p: Props) {
           These set the summer ceilings, taking the strictest limit each one implies. Re-run the
           questionnaire to recompute the thresholds after changing them.
         </div>
-      </div>
+      </details>
 
-      <div className="group" hidden={p.continents.length < 2}>
-        <h3>
+      <details className="group fold" hidden={p.continents.length < 2}>
+        <summary>
           Continent{' '}
           {f.continents.length > 0 && (
-            <button className="link" onClick={() => set({ continents: [] })}>
+            <button className="link" onClick={inSummary(() => set({ continents: [] }))}>
               clear
             </button>
           )}
-        </h3>
+        </summary>
         <div className="regions">
           {p.continents.map((k) => (
             <button
@@ -527,10 +563,10 @@ export default function FilterPanel(p: Props) {
             </button>
           ))}
         </div>
-      </div>
+      </details>
 
-      <div className="group">
-        <h3>Can you actually buy?</h3>
+      <details className="group fold">
+        <summary>Can you actually buy?</summary>
         <div className="regions">
           {(['freehold', 'restricted', 'leasehold', 'prohibited'] as Ownership[]).map((o) => (
             <button
@@ -556,10 +592,10 @@ export default function FilterPanel(p: Props) {
           Ghana lease rather than sell, and China and India are closed to non-residents. Open a
           town to read the rule for its country. Indicative only, verify before acting.
         </div>
-      </div>
+      </details>
 
-      <div className="group">
-        <h3>Where you may live</h3>
+      <details className="group fold">
+        <summary>Where you may live</summary>
         <label className="chk">
           <input
             type="checkbox"
@@ -574,17 +610,17 @@ export default function FilterPanel(p: Props) {
           {' '}places that would need a visa, which is a solvable problem in most of the world
           and a very hard one in a few.
         </div>
-      </div>
+      </details>
 
-      <div className="group">
-        <h3>
+      <details className="group fold">
+        <summary>
           Countries{' '}
           {f.countries.length > 0 && (
-            <button className="link" onClick={() => set({ countries: [] })}>
+            <button className="link" onClick={inSummary(() => set({ countries: [] }))}>
               clear
             </button>
           )}
-        </h3>
+        </summary>
         <div className="regions">
           {p.countries.map((ccc) => (
             <button
@@ -609,17 +645,17 @@ export default function FilterPanel(p: Props) {
           town, so elsewhere the figure is a national band, fine for shortlisting and not
           for valuing a house.
         </div>
-      </div>
+      </details>
 
-      <div className="group" hidden={f.countries.length !== 1}>
-        <h3>
+      <details className="group fold" hidden={f.countries.length !== 1}>
+        <summary>
           Regions{' '}
           {p.filters.regions.length > 0 && (
-            <button className="link" onClick={() => set({ regions: [] })}>
+            <button className="link" onClick={inSummary(() => set({ regions: [] }))}>
               clear
             </button>
           )}
-        </h3>
+        </summary>
         <div className="regions">
           {p.regions.map((r) => (
             <button
@@ -637,11 +673,19 @@ export default function FilterPanel(p: Props) {
             </button>
           ))}
         </div>
-      </div>
+      </details>
 
-      <button className="link" onClick={() => p.onFilters({ ...DEFAULT_FILTERS })}>
-        Reset all filters
-      </button>
+      <div className="panelfoot">
+        <button className="chipbtn" onClick={p.onStartOver}>
+          Start over with four taps
+        </button>
+        <button className="chipbtn" onClick={p.onOpenWizard}>
+          Calibrate with places you know
+        </button>
+        <button className="link" onClick={() => p.onFilters({ ...DEFAULT_FILTERS })}>
+          Reset all filters
+        </button>
+      </div>
     </>
   );
 }

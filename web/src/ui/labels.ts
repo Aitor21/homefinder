@@ -26,6 +26,8 @@ export const DIM_LABEL: Record<keyof Breakdown, string> = {
   ski: 'Ski slopes',
   pets: 'Good for a dog',
   safety: 'Safety',
+  culture: 'Museums & theatre',
+  events: 'Festivals & events',
 };
 
 /** One reason a near miss is held back, as a short phrase with its numbers. */

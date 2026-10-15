@@ -8,6 +8,7 @@ import type { Ranked } from '../scoring';
 import type { Town } from '../types';
 import type { Mode } from '../App';
 import type { Listing, BuildStatus } from '../listings';
+import { EVENTS, EVENT_KIND_LABEL, formatMonths, type EventKind } from '../culture';
 
 /**
  * Leaflet tooltips take HTML, and these strings are data: town names from
@@ -40,7 +41,17 @@ interface Props {
    *  often developments alone, without the ranking colouring the map. */
   showPlaces: boolean;
   showBuilds: boolean;
+  /** The festival registry, drawn as its own layer. Off by default: it is
+   *  context for the ranking, not part of it. */
+  showEvents?: boolean;
 }
+
+const EVENT_COLOUR: Record<EventKind, string> = {
+  music: '#c2378f',
+  arts: '#7b4fd1',
+  film: '#3b4a9a',
+  tradition: '#d97706',
+};
 
 /**
  * A development's colour is its stage, not its score. Blue for something you
@@ -83,12 +94,13 @@ function colour(v: number): string {
 }
 
 export default function MapView({
-  ranked, mode, selected, focus, onSelect, listings, showPlaces, showBuilds,
+  ranked, mode, selected, focus, onSelect, listings, showPlaces, showBuilds, showEvents,
 }: Props) {
   const el = useRef<HTMLDivElement>(null);
   const map = useRef<L.Map | null>(null);
   const layer = useRef<L.LayerGroup | null>(null);
   const buildLayer = useRef<L.LayerGroup | null>(null);
+  const eventLayer = useRef<L.LayerGroup | null>(null);
   const renderer = useRef<L.Canvas | null>(null);
 
   useEffect(() => {
@@ -108,6 +120,7 @@ export default function MapView({
     layer.current = L.layerGroup().addTo(m);
     // Added after, so development pins sit above the town dots.
     buildLayer.current = L.layerGroup().addTo(m);
+    eventLayer.current = L.layerGroup().addTo(m);
     map.current = m;
 
     const legend = new L.Control({ position: 'bottomright' });
@@ -235,6 +248,30 @@ export default function MapView({
         .addTo(bl);
     }
   }, [listings, ranked, showBuilds, onSelect]);
+
+  // --- festivals -----------------------------------------------------------
+  useEffect(() => {
+    const el = eventLayer.current;
+    if (!el) return;
+    el.clearLayers();
+    if (!showEvents) return;
+    for (const e of EVENTS) {
+      L.circleMarker([e.lat, e.lon], {
+        radius: e.scale === 'major' ? 6 : 4,
+        fillColor: EVENT_COLOUR[e.kind],
+        fillOpacity: 0.9,
+        color: '#fff',
+        weight: 1.5,
+        renderer: renderer.current ?? undefined,
+      })
+        .bindTooltip(
+          `<b>${esc(e.name)}</b><br>${esc(e.where)} · ${esc(formatMonths(e.months))}<br>` +
+            `<span style="opacity:.6">${esc(EVENT_KIND_LABEL[e.kind])}${e.scale === 'major' ? ', major' : ''}</span>`,
+          { direction: 'top' },
+        )
+        .addTo(el);
+    }
+  }, [showEvents]);
 
   // Pan to the open town. Taken from `focus` rather than looked up in the
   // plotted rows, because a town opened from a search may be one the filters

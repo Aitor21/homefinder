@@ -16,6 +16,7 @@ import type { CountryRule, Town, Filters, Weights } from './types';
 import { POP_ANY, SAFETY_ANY } from './types';
 import { driveMinutes, formatDrive } from './travel';
 import { affinityScore, type Affinity, type Distribution } from './affinity';
+import { cultureScore, eventsScore } from './culture';
 
 export const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
@@ -340,6 +341,9 @@ export interface Breakdown {
   ski: number | null;
   pets: number | null;
   safety: number | null;
+  /** Measured from venues where surveyed, estimated from city size otherwise. */
+  culture: number;
+  events: number;
 }
 
 export function breakdown(t: Town, f: Filters, ctx: ScoreContext): Breakdown {
@@ -365,6 +369,8 @@ export function breakdown(t: Town, f: Filters, ctx: ScoreContext): Breakdown {
     ski: skiScore(t),
     pets: petScore(t),
     safety: safetyScore(t),
+    culture: cultureScore(t),
+    events: eventsScore(t),
   };
 }
 
