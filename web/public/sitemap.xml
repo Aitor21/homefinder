@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- One page: the app is a single URL. Submit this in Google Search Console
+     (Sitemaps) after verifying the property https://aitor21.github.io/homefinder/. -->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://aitor21.github.io/homefinder/</loc>
+    <lastmod>2026-10-15</lastmod>
+  </url>
+</urlset>

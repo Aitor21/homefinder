@@ -867,6 +867,29 @@ git push -u origin main
 The site lands at `https://YOUR-USER.github.io/homefinder/`. That is a
 subdirectory, which is exactly why the asset and data paths are relative.
 
+### Being found on Google
+
+The app renders in the browser, so the page a crawler fetches used to be an
+empty `<div>` under the title "HomeFinder". `web/index.html` now carries:
+- what a search engine needs: a descriptive title and description, a
+  canonical URL, Open Graph and Twitter tags with a 1200×630 preview
+  (`og-image.png`), and `WebApplication` structured data;
+- about 330 words of real content inside `#root`, which React replaces the
+  moment it starts, so crawlers that do not run scripts still read what the
+  app is.
+
+`sitemap.xml` and `robots.txt` ship with the build. Two steps only the owner
+can take:
+1. Verify `https://aitor21.github.io/homefinder/` in Google Search Console and
+   submit `https://aitor21.github.io/homefinder/sitemap.xml`. On a project site
+   the URL-prefix property is the one to use, since the domain belongs to
+   GitHub.
+2. Link to it from a page Google already knows, such as a portfolio. A first
+   link from an indexed site is how a new URL gets discovered at all.
+
+Change the absolute URLs in `index.html`, `robots.txt` and `sitemap.xml` if the
+app moves to another address.
+
 ### Cloudflare Pages, if you expect much traffic
 
 Genuinely better on the one axis that matters here. GitHub Pages is soft-limited
