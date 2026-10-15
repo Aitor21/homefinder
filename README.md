@@ -890,6 +890,10 @@ can take:
 Change the absolute URLs in `index.html`, `robots.txt` and `sitemap.xml` if the
 app moves to another address.
 
+`web/public/google2c45ca5a0dd12673.html` is the Search Console ownership
+file. Google re-checks it periodically, so it must stay exactly as it is:
+deleting or editing it un-verifies the property.
+
 ### Cloudflare Pages, if you expect much traffic
 
 Genuinely better on the one axis that matters here. GitHub Pages is soft-limited
