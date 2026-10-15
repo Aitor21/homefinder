@@ -1,7 +1,7 @@
 {
   "name": "HomeFinder",
   "short_name": "HomeFinder",
-  "description": "Find where to buy a home by climate, connections and price.",
+  "description": "Find where to live, rent, work remotely, retire or travel: 31,500 places compared by weather, landscape, culture, costs and connections.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
@@ -24,5 +24,10 @@
       "type": "image/png",
       "purpose": "maskable"
     }
+  ],
+  "categories": [
+    "lifestyle",
+    "travel",
+    "utilities"
   ]
 }

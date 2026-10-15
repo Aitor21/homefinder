@@ -8,6 +8,7 @@ import type { Ranked } from '../scoring';
 import type { Town } from '../types';
 import type { Mode } from '../App';
 import type { Listing, BuildStatus } from '../listings';
+import { EVENTS, EVENT_KIND_LABEL, formatMonths, type EventKind } from '../culture';
 
 /**
  * Leaflet tooltips take HTML, and these strings are data: town names from
@@ -40,7 +41,17 @@ interface Props {
    *  often developments alone, without the ranking colouring the map. */
   showPlaces: boolean;
   showBuilds: boolean;
+  /** The festival registry, drawn as its own layer. Off by default: it is
+   *  context for the ranking, not part of it. */
+  showEvents?: boolean;
 }
+
+const EVENT_COLOUR: Record<EventKind, string> = {
+  music: '#c2378f',
+  arts: '#7b4fd1',
+  film: '#3b4a9a',
+  tradition: '#d97706',
+};
 
 /**
  * A development's colour is its stage, not its score. Blue for something you
@@ -83,12 +94,19 @@ function colour(v: number): string {
 }
 
 export default function MapView({
-  ranked, mode, selected, focus, onSelect, listings, showPlaces, showBuilds,
+  ranked, mode, selected, focus, onSelect, listings, showPlaces, showBuilds, showEvents,
 }: Props) {
   const el = useRef<HTMLDivElement>(null);
   const map = useRef<L.Map | null>(null);
   const layer = useRef<L.LayerGroup | null>(null);
   const buildLayer = useRef<L.LayerGroup | null>(null);
+  const eventLayer = useRef<L.LayerGroup | null>(null);
+  const topLayer = useRef<L.LayerGroup | null>(null);
+  // The map follows the results until you move it yourself; after that it
+  // stays where you put it, and the fit button hands control back.
+  const userMoved = useRef(false);
+  const fitting = useRef(false);
+  const fitTo = useRef<() => void>(() => {});
   const renderer = useRef<L.Canvas | null>(null);
 
   useEffect(() => {
@@ -108,6 +126,30 @@ export default function MapView({
     layer.current = L.layerGroup().addTo(m);
     // Added after, so development pins sit above the town dots.
     buildLayer.current = L.layerGroup().addTo(m);
+    eventLayer.current = L.layerGroup().addTo(m);
+    topLayer.current = L.layerGroup().addTo(m);
+    m.on('dragstart', () => {
+      userMoved.current = true;
+    });
+    m.on('zoomstart', () => {
+      if (!fitting.current) userMoved.current = true;
+    });
+
+    const fit = new L.Control({ position: 'topleft' });
+    fit.onAdd = () => {
+      const b = L.DomUtil.create('button', 'fitbtn');
+      b.type = 'button';
+      b.title = 'Fit the map to your results';
+      b.setAttribute('aria-label', 'Fit the map to your results');
+      b.textContent = '⤢';
+      L.DomEvent.disableClickPropagation(b);
+      b.onclick = () => {
+        userMoved.current = false;
+        fitTo.current();
+      };
+      return b;
+    };
+    fit.addTo(m);
     map.current = m;
 
     const legend = new L.Control({ position: 'bottomright' });
@@ -124,7 +166,12 @@ export default function MapView({
     // Leaflet caches the container size at init and does not notice later
     // changes, which leaves the tile grid drawn for the old dimensions. Watch
     // the element instead of guessing when that happens.
-    const ro = new ResizeObserver(() => m.invalidateSize());
+    const ro = new ResizeObserver(() => {
+      m.invalidateSize();
+      // A map shown after being hidden (the phone's list/map switch) was
+      // fitted at zero size, so fit again now it has one.
+      if (!userMoved.current && el.current && el.current.clientHeight > 0) fitTo.current();
+    });
     ro.observe(el.current);
 
     return () => {
@@ -188,6 +235,52 @@ export default function MapView({
     }
   }, [ranked, mode, selected, onSelect, showPlaces]);
 
+  // --- the top ten, numbered, so a card's rank and its pin agree -----------
+  useEffect(() => {
+    const tl = topLayer.current;
+    if (!tl) return;
+    tl.clearLayers();
+    if (!showPlaces || mode === 'gems') return;
+    ranked.slice(0, 10).forEach((r, i) => {
+      const t = r.town;
+      L.marker([t.lat, t.lon], {
+        icon: L.divIcon({
+          className: t.id === selected ? 'pin sel' : 'pin',
+          html: `<span>${i + 1}</span>`,
+          iconSize: [24, 24],
+          iconAnchor: [12, 12],
+        }),
+        zIndexOffset: 1000 - i,
+        keyboard: false,
+      })
+        .bindTooltip(`<b>${i + 1}. ${esc(t.name)}</b> <span style="opacity:.6">${esc(t.countryName)}</span>`, { direction: 'top', offset: [0, -10] })
+        .on('click', () => onSelect(t.id))
+        .addTo(tl);
+    });
+  }, [ranked, mode, selected, onSelect, showPlaces]);
+
+  // --- follow the results ------------------------------------------------
+  // Keyed on the top places rather than the whole list, so dragging a
+  // slider that only reshuffles the tail does not throw the map around, and
+  // debounced so it moves once when the hand stops.
+  const topKey = ranked.slice(0, 30).map((r) => r.town.id).join(',');
+  useEffect(() => {
+    fitTo.current = () => {
+      const m = map.current;
+      if (!m || !ranked.length) return;
+      const pts = ranked.slice(0, 30).map((r) => L.latLng(r.town.lat, r.town.lon));
+      fitting.current = true;
+      m.fitBounds(L.latLngBounds(pts), { padding: [36, 36], maxZoom: 9, animate: true });
+      window.setTimeout(() => {
+        fitting.current = false;
+      }, 400);
+    };
+    if (userMoved.current) return;
+    const h = window.setTimeout(() => fitTo.current(), 450);
+    return () => window.clearTimeout(h);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [topKey]);
+
   // --- developments -------------------------------------------------------
   useEffect(() => {
     const bl = buildLayer.current;
@@ -235,6 +328,30 @@ export default function MapView({
         .addTo(bl);
     }
   }, [listings, ranked, showBuilds, onSelect]);
+
+  // --- festivals -----------------------------------------------------------
+  useEffect(() => {
+    const el = eventLayer.current;
+    if (!el) return;
+    el.clearLayers();
+    if (!showEvents) return;
+    for (const e of EVENTS) {
+      L.circleMarker([e.lat, e.lon], {
+        radius: e.scale === 'major' ? 6 : 4,
+        fillColor: EVENT_COLOUR[e.kind],
+        fillOpacity: 0.9,
+        color: '#fff',
+        weight: 1.5,
+        renderer: renderer.current ?? undefined,
+      })
+        .bindTooltip(
+          `<b>${esc(e.name)}</b><br>${esc(e.where)} · ${esc(formatMonths(e.months))}<br>` +
+            `<span style="opacity:.6">${esc(EVENT_KIND_LABEL[e.kind])}${e.scale === 'major' ? ', major' : ''}</span>`,
+          { direction: 'top' },
+        )
+        .addTo(el);
+    }
+  }, [showEvents]);
 
   // Pan to the open town. Taken from `focus` rather than looked up in the
   // plotted rows, because a town opened from a search may be one the filters

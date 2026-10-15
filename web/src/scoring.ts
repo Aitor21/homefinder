@@ -16,6 +16,8 @@ import type { CountryRule, Town, Filters, Weights } from './types';
 import { POP_ANY, SAFETY_ANY } from './types';
 import { driveMinutes, formatDrive } from './travel';
 import { affinityScore, type Affinity, type Distribution } from './affinity';
+import { cultureScore, eventsScore } from './culture';
+import { rainIn, weatherHigh } from './climate';
 
 export const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
@@ -186,11 +188,46 @@ export function mountainScore(t: Town): number {
  * Returns null when no target has been set, which drops the dimension from the
  * score rather than substituting an opinion.
  */
-export function summerFit(t: Town, target: number | null): number | null {
+export function summerFit(t: Town, target: number | null, months: readonly number[] = []): number | null {
   if (target == null) return null;
   // 9 C off target is as wrong as it gets in practice: that is roughly the
-  // spread between the Atlantic coast and inland Andalusia.
-  return 1 - clamp(Math.abs(t.hottestTmax - target) / 9, 0, 1);
+  // spread between the Atlantic coast and inland Andalusia. For a visit the
+  // temperature is the one during the visit, not the hottest month.
+  return 1 - clamp(Math.abs(weatherHigh(t, months) - target) / 9, 0, 1);
+}
+
+/**
+ * How expensive housing is here, for anyone not buying: renters, nomads,
+ * people working out where they could afford to live. Rents track purchase
+ * prices closely enough to rank by, and the purchase price per m² is what the
+ * dataset has everywhere. Log scale between roughly the 5th and 95th
+ * percentile of the dataset (€740 and €3,700 per m²), cheaper scoring higher.
+ * Outside Spain it is a national band, which the town panel says.
+ */
+export function housingCostScore(t: Town): number {
+  return inv(Math.log(Math.max(t.eurM2, 1)), Math.log(700), Math.log(4000));
+}
+
+/**
+ * Swimmable water inland: lakes and river beaches. Coastal places are left
+ * out (null) rather than scored, because OpenStreetMap does not tell a sea
+ * beach from a lake beach and the coast already has its own dimension; an
+ * inland town scores by how close its nearest mapped beach is.
+ */
+export function waterScore(t: Town): number | null {
+  if (t.beachKm == null || t.terrainPoisSurveyed === false) return null;
+  if (t.coastKm != null && t.coastKm < 15) return null;
+  return inv(t.beachKm, 1, 25);
+}
+
+/** Height above sea level, between lowland and a properly high town. */
+export function altitudeScore(t: Town): number | null {
+  return Number.isFinite(t.elev) ? norm(t.elev, 200, 1400) : null;
+}
+
+/** Flat, open country: little relief within 25 km. */
+export function flatScore(t: Town): number | null {
+  return t.relief25km == null ? null : inv(t.relief25km, 80, 600);
 }
 
 /**
@@ -340,20 +377,34 @@ export interface Breakdown {
   ski: number | null;
   pets: number | null;
   safety: number | null;
+  /** Measured from venues where surveyed, estimated from city size otherwise. */
+  culture: number;
+  events: number;
+  water: number | null;
+  altitude: number | null;
+  flat: number | null;
 }
 
 export function breakdown(t: Town, f: Filters, ctx: ScoreContext): Breakdown {
   return {
-    summerFit: summerFit(t, f.summerTarget),
-    // 80 m2 is the floor; 200 m2 for the same money is a genuinely different life.
-    affordability: norm(affordableM2(t, f.budget), f.minM2, f.minM2 * 2.6),
+    summerFit: summerFit(t, f.summerTarget, f.months),
+    // Buying: what the budget buys, where 80 m2 is the floor and 200 m2 for
+    // the same money is a genuinely different life. Not buying: how expensive
+    // housing is, which is what a renter or a nomad pays for.
+    affordability: f.buying
+      ? norm(affordableM2(t, f.budget), f.minM2, f.minM2 * 2.6)
+      : housingCostScore(t),
     airport: airportAccess(t),
     city: cityAccess(t),
     amenities: amenityScore(t),
     mountains: mountainScore(t),
     coast: coastScore(t),
     winterMild: norm(t.winterTmin, -4, 12),
-    drier: inv(t.annualRain, 350, 1800),
+    // For a visit, rain during the visit; otherwise over the year.
+    drier: (() => {
+      const r = rainIn(t, f.months);
+      return r == null ? inv(t.annualRain, 350, 1800) : inv(r, 15, 160);
+    })(),
     sunny: sunScore(t),
     cleanAir: airScore(t),
     internet: internetScore(t),
@@ -365,6 +416,11 @@ export function breakdown(t: Town, f: Filters, ctx: ScoreContext): Breakdown {
     ski: skiScore(t),
     pets: petScore(t),
     safety: safetyScore(t),
+    culture: cultureScore(t),
+    events: eventsScore(t, f.months),
+    water: waterScore(t),
+    altitude: altitudeScore(t),
+    flat: flatScore(t),
   };
 }
 
@@ -485,7 +541,7 @@ export function failures(t: Town, f: Filters, env: FilterEnv = {}): Failure[] {
   const push = (x: Draft) => out.push(new LazyFailure(x));
 
   const price = priceFor(t, f.minM2);
-  if (price > f.budget)
+  if (f.buying && price > f.budget)
     push({ key: 'budget', reason: 'over budget', relaxable: true, dim: 'affordability',
       miss: price / f.budget - 1, value: () => `${eurK(price)} for ${f.minM2} m²`,
       limit: () => eurK(f.budget) });
@@ -497,13 +553,15 @@ export function failures(t: Town, f: Filters, env: FilterEnv = {}): Failure[] {
     push({ key: 'warmNights', reason: 'too many warm nights', relaxable: true, dim: 'summerFit',
       miss: (t.tropicalNights - f.maxTropicalNights) / Math.max(f.maxTropicalNights, 10),
       value: () => `${Math.round(t.tropicalNights)} nights over 20 °C`, limit: () => `${f.maxTropicalNights}` });
-  if (t.hottestTmax > f.maxHotTmax)
-    push({ key: 'hotMax', reason: 'hottest month too hot', relaxable: true, dim: 'summerFit',
-      miss: (t.hottestTmax - f.maxHotTmax) / 3, value: () => `${r1(t.hottestTmax)} °C peak`,
+  const high = weatherHigh(t, f.months);
+  const when = f.months.length ? 'then' : 'peak';
+  if (high > f.maxHotTmax)
+    push({ key: 'hotMax', reason: f.months.length ? 'too hot then' : 'hottest month too hot', relaxable: true, dim: 'summerFit',
+      miss: (high - f.maxHotTmax) / 3, value: () => `${r1(high)} °C ${when}`,
       limit: () => `${f.maxHotTmax} °C` });
-  if (t.hottestTmax < f.minHotTmax)
-    push({ key: 'hotMin', reason: 'hottest month too cool', relaxable: true, dim: 'summerFit',
-      miss: (f.minHotTmax - t.hottestTmax) / 3, value: () => `${r1(t.hottestTmax)} °C peak`,
+  if (high < f.minHotTmax)
+    push({ key: 'hotMin', reason: f.months.length ? 'too cool then' : 'hottest month too cool', relaxable: true, dim: 'summerFit',
+      miss: (f.minHotTmax - high) / 3, value: () => `${r1(high)} °C ${when}`,
       limit: () => `${f.minHotTmax} °C` });
   if (t.winterTmin < f.minWinterTmin)
     push({ key: 'winterMin', reason: 'winters too cold', relaxable: true, dim: 'winterMild',
@@ -621,11 +679,12 @@ export function failures(t: Town, f: Filters, env: FilterEnv = {}): Failure[] {
  * The two must agree on order, which the tests check.
  */
 export function rejectReason(t: Town, f: Filters, env: FilterEnv = {}): string | null {
-  if (priceFor(t, f.minM2) > f.budget) return 'over budget';
+  if (f.buying && priceFor(t, f.minM2) > f.budget) return 'over budget';
   if (t.daysOver30 > f.maxDaysOver30) return 'too many hot days';
   if (t.tropicalNights > f.maxTropicalNights) return 'too many warm nights';
-  if (t.hottestTmax > f.maxHotTmax) return 'hottest month too hot';
-  if (t.hottestTmax < f.minHotTmax) return 'hottest month too cool';
+  const high = f.months.length ? weatherHigh(t, f.months) : t.hottestTmax;
+  if (high > f.maxHotTmax) return f.months.length ? 'too hot then' : 'hottest month too hot';
+  if (high < f.minHotTmax) return f.months.length ? 'too cool then' : 'hottest month too cool';
   if (t.winterTmin < f.minWinterTmin) return 'winters too cold';
   const air = airportDriveMin(t);
   if (air != null && air > f.maxAirportMin) return 'airport too far';

@@ -13,6 +13,189 @@ whether you may legally buy there, and whether you may legally live there. Then
 it hands you a pre-filtered link into a property portal for the ones worth a
 look.
 
+## Living somewhere, not only buying
+
+The tool began as a purchase screener, and most people looking for somewhere
+new are not buying. They will rent, work from a laptop, retire, or want to know
+where to spend October. So the first question is now **what brings you here**,
+and only one of the six answers is about buying:
+
+| Intent | What it changes |
+|---|---|
+| Move & live | The neutral default: weather, landscape, things to do, costs, connections |
+| Work remotely | Broadband weighted heavily and 50 Mbps required; living costs up |
+| Rent for a while | Housing costs, everyday costs and local services weighted up |
+| Travel & visit | You pick the months; weather, rain and festivals are judged for then |
+| Retire | Mild winters, health care and services, safety, living costs |
+| Buy a home | Turns on the purchase budget, the minimum size and "can a foreigner buy here" |
+
+**Buying is a filter you switch on, not the premise.** Off, nothing is excluded
+on price. Housing costs are still *ranked* (cheaper scores higher), because rents
+track purchase prices closely enough to sort by, and every country is shown,
+including those where a foreigner cannot buy. *I want to buy* in the panel turns
+the budget, the size and the ownership rule back on. Saved searches from before
+intents existed come back as the purchase searches they were.
+
+**Travel is judged on your dates.** Weather is the mean daily high over the
+months you pick rather than the hottest month of the year; rain is the rain in
+those months; festivals held while you are there count fully and others count
+for little. Living constraints that mean nothing on a visit are relaxed: a
+resort island 200 km from the nearest city is fine, and a week of hazy air is
+not a year of it. Pick October and November with warm weather, beaches and
+culture and the top of the list is Bali; Bali's wetter coast is marked down for
+its 156 mm a month while the drier north is called out as mostly dry.
+
+**Landscape is its own question.** Coast, mountains, lakes and rivers,
+highlands, forests and parks, flat open country. Three of those are new
+dimensions:
+- *Lakes and rivers* scores inland towns by their nearest mapped lake or river
+  beach. Coastal towns are left out of it rather than scored, because the map
+  does not tell a sea beach from a lake beach.
+- *Altitude* runs from 200 m to 1,400 m.
+- *Flat country* is the inverse of relief within 25 km.
+
+For anyone not buying, the town panel's *Housing* tab leads with the price level
+and with searches for long-term rentals, coworking and a Wikivoyage guide.
+These are searches rather than constructed links, for the same reason the
+portal links outside Spain are. The purchase details sit underneath under *If
+you wanted to buy*.
+
+**A hidden cap on the tropics, removed.** The "wide open" defaults allowed at
+most 200 days over 30 °C and 200 warm nights a year. That sounds generous and
+is not: the tropics run from 250 to 365, so every search had been silently
+leaving out Phuket, Bangkok, Salvador, Cancún and Darwin. The default is now no
+limit.
+
+## Four taps to a ranked list
+
+The first visit used to open on a questionnaire that asked you to grade cities
+from a list of a hundred and fifty, worldwide, before you had seen a single
+result. It is precise, and for someone arriving cold it is a wall. Now the
+first visit asks four things anyone can answer without thinking, each with one
+tap on a tile:
+
+0. **What brings you here?** Move, work remotely, rent, travel, retire or buy
+   (see above). Travellers also pick their months.
+1. **Where would you consider?** Anywhere, Europe, wherever an EU passport is
+   enough, or only your own country.
+2. **What summer?** Fresh, mild, warm or hot, each with real places you have
+   heard of as examples ("like Bilbao, Porto, Paris"), picked nearest home.
+   Hot is as valid an answer as cool.
+3. **What would you love around you?** Sixteen tiles, pick any: beach,
+   mountains, nature, museums and theatre, festivals and live music, big-city
+   buzz or a quiet small town, sunshine, mild winters, skiing, low cost of
+   living, remote work, car-free life, flying often, a dog, safety.
+4. **Roughly what can you spend?** Buyers only: four budgets and three sizes.
+
+A live count shows how many places are still in play at every step, and the
+results come straight after. Single-choice screens move on by themselves: a
+Next button after a tap is a second tap that says nothing.
+
+**Then it learns from places, one at a time.** *Taste check* shows ten varied
+places from your results, one card each: the year's temperatures as twelve
+bars and the handful of facts that make the place itself (the sea, the
+mountains, its festivals, the airport, the price). Swipe right or tap *I'd
+live here*. Three yeses and the taste model below starts ranking everything by
+what they share. The ten are picked to differ from each other, by climate,
+coast, relief, size, culture and country, because the top ten of a ranking is
+usually one region ten times over, and liking ten neighbours teaches nothing
+but that you like that region.
+
+**Fine-tuning is still all there, just not in the way.** The same four
+questions sit at the top of the filter panel as tiles, and every slider is
+folded into a section below them. The tiles are patches on the real filters
+and weights, not a second copy of your answers, so they cannot drift: a tile is
+lit because the filters say so. Above the results, the search reads as a row of
+chips (*Europe · Mild summers · Beach & sea · ≤ €300k*), each removable in one
+tap. The whole search is saved locally, so fine-tuning survives a reload.
+
+The original questionnaire is kept as *Calibrate with places you know*, for
+anyone who would rather set their limits from cities they have lived in.
+
+**On a phone it is an app, not a squeezed desktop.** One view at a time, the
+list or the map, switched from a bar at the bottom where a thumb reaches.
+Results are cards rather than a twenty-column table (which is still there on a
+wider screen), the town panel is a near-full-height sheet with its name and
+close button pinned, and the filters are a full-width drawer with a *Show
+results* button that always says how many there are.
+
+## Why each suggestion, not just a score
+
+The top fifty of a search usually sit within three points of each other, so
+an 83 cannot tell you why one place rather than the next. Every suggestion now
+says it in words, with the number behind each claim:
+
+> ✓ ~€1,565/m², your budget buys 192 m²
+> ✓ 26° summers, right on your 26°
+> ✓ Aste Nagusia, BBK Live +3 more
+> ! 2 h 10 to a hub airport
+
+Reasons are measured against the *typical place in your own results*, on what
+you weight. "5 km from the sea" is only said when the rest of your list is not
+also by the sea. A trade-off is only named on something you actually care
+about, meaning a weight you raised or one that is heavy anyway, so a seaside
+town is not marked down as "flat" for someone who never asked for mountains.
+`explain.ts` holds the logic.
+
+**Areas, not fifty suburbs.** Neighbouring towns share a climate, an airport
+and a coast, so a ranking's top is often one metropolitan fringe many times
+over: in one test search, the top 50 came from four regions. The *Areas* view
+groups suggestions by region, each with its best place, the runners-up and the
+area's typical price and summer. *All 51 →* opens the full list for that
+area.
+
+**Cards by default, the table one tap away.** Cards lead with the reasons;
+the twenty-column table is still there under *Table*, with a "Stands out for"
+column. The town panel is split into Overview, Climate, Living and Buying.
+Overview's score chart shows only what counts, heaviest weight first, and names
+what was left out and why. The map numbers the top ten so a card and its pin
+agree, and follows your results until you move it yourself; ⤢ hands control
+back.
+
+**Duplicates merged.** GeoNames lists a handful of places twice (*Costa de
+Caparica* and *Costa da Caparica*, 300 m apart). Entries within 1.5 km whose
+names differ by at most two letters are merged on load, keeping the larger: 20
+of 31,538. Close but distinct towns (Nancy and Villers-lès-Nancy) are left
+alone.
+
+## Culture and events
+
+Climate decides whether you can bear a place. What there is to do decides
+whether you enjoy it, and the tool had nothing to say about that. Two new
+weights do, *Museums, theatre & live music* and *Festivals & big events*, each
+switched on by its tile in the quick start.
+
+**Festivals are a registry, because a festival is not on a map.** It is a place
+and a month. 333 large recurring events across the dataset's countries, from
+Primavera Sound, BBK Live and Las Fallas to Fuji Rock, the Edinburgh Fringe,
+Montreux, Día de Muertos in Oaxaca and Womadelaide, each with its host town,
+usual months and whether it is major (people fly in) or notable (they drive).
+Distances are computed in the browser, so adding one needs no pipeline run.
+Each place scores by what is within 100 km, weighted by scale and closeness and
+saturating, so a city with six festivals reads as "always something on" rather
+than six times better than one with one. The town panel lists them with their
+months, and the map has a *Festivals* layer. The list is the big ones only, and
+the panel says so: zero means none of the big ones, never "nothing happens
+here".
+
+**Venues come from OpenStreetMap, through a new `culture` stage:** museums;
+theatres, opera houses and concert halls; cinemas; live music venues and
+clubs; arts centres and galleries; each as a distance and a count within
+15 km, scored on a log scale. It needs Overpass and has not been run for the
+dataset currently committed, so until it is, culture is an **estimate** from
+city size: how big the place is, or how close it sits to a city of 250,000,
+which reliably has a theatre and a museum. That cannot tell a lively small
+town from a sleepy one, and the panel says it is an estimate. Running
+
+```bash
+python pipeline/build.py --stage culture && python pipeline/emit.py
+```
+
+replaces the estimate with the counts wherever they exist, with no change to
+the web app. Countries whose own big towns barely map their venues keep the
+estimate, for the same reason thinly mapped shops drop out of the services
+score.
+
 ## Buying and living are two different questions
 
 Almost every relocation tool collapses them. They come apart constantly:
@@ -477,7 +660,8 @@ What did not work as intended:
 
 ## The questionnaire
 
-The first thing the app asks is not "how many days above 30 °C can you tolerate?", nobody knows that. It asks which places you have actually lived in and found
+Now the advanced route, under *Calibrate with places you know*; the first
+visit uses the four-tap quick start above. What it asks is not "how many days above 30 °C can you tolerate?", nobody knows that. It asks which places you have actually lived in and found
 unbearable, then reads their real measurements out of the dataset and derives
 your thresholds from them.
 
@@ -683,6 +867,29 @@ git push -u origin main
 The site lands at `https://YOUR-USER.github.io/homefinder/`. That is a
 subdirectory, which is exactly why the asset and data paths are relative.
 
+### Being found on Google
+
+The app renders in the browser, so the page a crawler fetches used to be an
+empty `<div>` under the title "HomeFinder". `web/index.html` now carries:
+- what a search engine needs: a descriptive title and description, a
+  canonical URL, Open Graph and Twitter tags with a 1200×630 preview
+  (`og-image.png`), and `WebApplication` structured data;
+- about 330 words of real content inside `#root`, which React replaces the
+  moment it starts, so crawlers that do not run scripts still read what the
+  app is.
+
+`sitemap.xml` and `robots.txt` ship with the build. Two steps only the owner
+can take:
+1. Verify `https://aitor21.github.io/homefinder/` in Google Search Console and
+   submit `https://aitor21.github.io/homefinder/sitemap.xml`. On a project site
+   the URL-prefix property is the one to use, since the domain belongs to
+   GitHub.
+2. Link to it from a page Google already knows, such as a portfolio. A first
+   link from an indexed site is how a new URL gets discovered at all.
+
+Change the absolute URLs in `index.html`, `robots.txt` and `sitemap.xml` if the
+app moves to another address.
+
 ### Cloudflare Pages, if you expect much traffic
 
 Genuinely better on the one axis that matters here. GitHub Pages is soft-limited
@@ -839,6 +1046,8 @@ measured and 4,210 modelled.
 | Shops, pharmacies, hospitals | OpenStreetMap via Overpass | worldwide: 458,406 supermarkets, 423,347 pharmacies, 299,929 hospitals and clinics |
 | Vets and dog parks | OpenStreetMap via Overpass | worldwide: 60,727 vets, 28,299 dog parks |
 | Schools, cycleways | OpenStreetMap via Overpass | Spain |
+| Museums, theatres, cinemas, live music, arts | OpenStreetMap via Overpass, `culture` stage | worldwide once run; estimated from city size until then |
+| Festivals and big events | Curated registry in `web/src/culture.ts` | 333 events, usual months, indicative |
 | Time zones | GeoNames IANA zones, offsets computed in the browser | worldwide |
 | Safety | UNODC intentional homicide rates via the World Bank | 95 of 101 countries, national |
 | Bringing a pet in | National veterinary authorities, Sep 2026 | 94 countries, for an animal travelling from the EU |
@@ -952,7 +1161,7 @@ told its nearest station was in Portugal.
 pipeline/          Python. Run occasionally; resumable and cached.
   common.py        HTTP caching, vectorised geo maths, name normalisation
   build.py         stage orchestrator
-  stages/          places, worldclim, climate, access, amenities, terrain, prices
+  stages/          places, worldclim, climate, access, amenities, culture, terrain, prices
   emit.py          merges everything into web/public/data/towns.json (columnar)
 web/               Vite + React + TypeScript + Leaflet
   src/scoring.ts   the weighted model and every filter, pure and unit-tested
@@ -960,8 +1169,13 @@ web/               Vite + React + TypeScript + Leaflet
   src/clock.ts     time differences, daylight, distance from home
   src/gems.ts      ridge-regularised residual regression
   src/listings.ts  portal deep links, CSV import, dormant API adapter
+  src/quickstart.ts the four-tap start, its tiles as filter patches, the taste deck sample
+  src/culture.ts   the festival registry, events and culture scores
+  src/explain.ts   why a place is suggested: strengths and trade-offs against your list
+  src/areas.ts     suggestions grouped by region
 ```
 
 `npm test` covers the scoring model, the filters, near misses, clocks and
-daylight, the gem regression, the questionnaire and the listing parsers: 152
-tests, no I/O.
+daylight, the gem regression, the questionnaire, the quick start, culture and
+events, the reasons, areas, duplicate merging, intents and travel months, and
+the listing parsers: 195 tests, no I/O.

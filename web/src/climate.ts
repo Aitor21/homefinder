@@ -70,3 +70,43 @@ export function improvementOver(t: Town, ref: Town | null): Comparison | null {
     acPct: acIndexVs(t, ref),
   };
 }
+
+export const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/**
+ * The daily high that matters for this search: the hottest month's for
+ * someone living there year-round, the mean over the months of a visit for
+ * someone who is not. Someone going to Seville in November is not asking
+ * about August.
+ */
+export function weatherHigh(t: Town, months: readonly number[]): number {
+  if (!months.length || t.monthlyTmax?.length !== 12) return t.hottestTmax;
+  let s = 0;
+  for (const m of months) s += t.monthlyTmax[m];
+  return s / months.length;
+}
+
+/** Mean night-time low over the months of a visit, or the winter low year-round. */
+export function weatherLow(t: Town, months: readonly number[]): number {
+  if (!months.length || t.monthlyTmin?.length !== 12) return t.winterTmin;
+  let s = 0;
+  for (const m of months) s += t.monthlyTmin[m];
+  return s / months.length;
+}
+
+/** Mean monthly rain over the months of a visit, in mm, or null year-round. */
+export function rainIn(t: Town, months: readonly number[]): number | null {
+  if (!months.length || t.monthlyPrec?.length !== 12) return null;
+  let s = 0;
+  for (const m of months) s += t.monthlyPrec[m];
+  return s / months.length;
+}
+
+/** "Oct", "Oct–Nov", "Jul, Dec": the months of a visit, for display. */
+export function monthLabel(months: readonly number[]): string {
+  if (!months.length) return 'year-round';
+  const s = [...months].sort((a, b) => a - b);
+  if (s.length === 1) return MONTHS[s[0]];
+  const run = s.every((m, i) => i === 0 || m === s[i - 1] + 1);
+  return run ? `${MONTHS[s[0]]}–${MONTHS[s[s.length - 1]]}` : s.map((m) => MONTHS[m]).join(', ');
+}

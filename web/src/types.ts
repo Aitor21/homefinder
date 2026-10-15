@@ -155,6 +155,28 @@ export interface Town {
   /** False where beach, nature or ski were not surveyed for this place. */
   terrainPoisSurveyed: boolean;
 
+  // culture -- OpenStreetMap, from the `culture` pipeline stage. Optional:
+  // a dataset built before that stage existed has none of these, and the
+  // culture score falls back to an estimate from city size (see culture.ts).
+  /** Nearest museum, and how many within 15 km. */
+  museumKm?: number | null;
+  museum15km?: number | null;
+  /** Theatres, opera houses and concert halls. */
+  theatreKm?: number | null;
+  theatre15km?: number | null;
+  cinemaKm?: number | null;
+  cinema15km?: number | null;
+  /** Live music venues and clubs. */
+  musicKm?: number | null;
+  music15km?: number | null;
+  /** Arts centres and galleries. */
+  artsKm?: number | null;
+  arts15km?: number | null;
+  /** The culture layers were queried here. */
+  cultureSurveyed?: boolean;
+  /** How densely the country's own big towns map culture, against the median country. */
+  cultureMapped?: number | null;
+
   // safety
   /**
    * Intentional homicides per 100,000 people, national, UNODC via the World
@@ -273,7 +295,28 @@ export interface Dataset {
   towns: Town[];
 }
 
+/**
+ * Why someone is here. Most people are not buying: they want to know where
+ * they would like to LIVE, for a season or for good, and whether they would
+ * rent, work remotely, retire or just visit. Only `buy` turns on the purchase
+ * budget and the question of whether a foreigner may buy at all.
+ */
+export type Intent = 'live' | 'nomad' | 'rent' | 'travel' | 'retire' | 'buy';
+
 export interface Filters {
+  /** What the search is for; shapes defaults and wording, filters nothing by itself. */
+  intent: Intent;
+  /**
+   * Whether the purchase budget and minimum size apply. Off, price still
+   * informs the housing-cost score but excludes nothing.
+   */
+  buying: boolean;
+  /**
+   * Months of a visit, 0 = January. Empty means living there year-round, and
+   * the weather is judged on the hottest month; set, it is judged on these
+   * months, and festivals held in them count most.
+   */
+  months: number[];
   budget: number;
   minM2: number;
   maxDaysOver30: number;
@@ -373,22 +416,45 @@ export interface Weights {
   pets: number;
   /** Low national homicide rate. */
   safety: number;
+  /** Museums, theatres, cinemas and live music within reach. */
+  culture: number;
+  /** Festivals and big recurring events within reach: see culture.ts. */
+  events: number;
+  /** Lakes and river beaches inland: swimmable water that is not the sea. */
+  water: number;
+  /** Height above sea level: cooler air, highland towns. */
+  altitude: number;
+  /** Flat, open country: easy walking and cycling, wide horizons. */
+  flat: number;
 }
 
 /** The maximum-population slider's top notch: at or above this, no upper limit. */
 export const POP_ANY = 5_000_000;
 
+/** The day-count sliders' top notch: every day of the year, i.e. no limit. */
+export const DAYS_ANY = 366;
+
 /** The homicide slider's top notch, per 100,000: at or above this, no limit. */
 export const SAFETY_ANY = 50;
 
 export const DEFAULT_FILTERS: Filters = {
+  // The model's own defaults stay those of the original purchase screener, so
+  // a saved search or a test written for it means what it always meant. The
+  // app starts new visitors from quickBase() in quickstart.ts instead, which
+  // is about living somewhere and leaves the purchase budget off.
+  intent: 'buy',
+  buying: true,
+  months: [],
   budget: 400_000,
   minM2: 80,
   // Wide open by default. The questionnaire narrows these from the places you
   // name; starting them tight would be an opinion the app has no business
   // holding before you have said anything.
-  maxDaysOver30: 200,
-  maxTropicalNights: 200,
+  // No limit at all. These were 200, which read as wide open and was not: the
+  // tropics run 250 to 365 hot days and warm nights a year, so every search
+  // silently left out Phuket, Salvador, Cancún and Darwin.
+  maxDaysOver30: DAYS_ANY,
+  maxTropicalNights: DAYS_ANY,
   maxHotTmax: 50,
   minHotTmax: 0,
   minWinterTmin: -99,
@@ -456,4 +522,13 @@ export const DEFAULT_WEIGHTS: Weights = {
   // National and coarse, so it is weighted modestly: it separates countries
   // whose rates differ tenfold, not one Spanish town from the next.
   safety: 3,
+  // Most people value an evening out a little, so culture starts low rather
+  // than off, like nature. Festivals are specific to some people and start at
+  // zero; the quick start switches either on for those who ask.
+  culture: 2,
+  events: 0,
+  // Landscape preferences are switched on by the person, never assumed.
+  water: 0,
+  altitude: 0,
+  flat: 0,
 };

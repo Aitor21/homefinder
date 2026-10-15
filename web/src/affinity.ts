@@ -31,6 +31,7 @@
  */
 import type { Town } from './types';
 import { hubDriveMin, transitKm } from './scoring';
+import { cultureScore, eventsScore } from './culture';
 
 export const MIN_PICKS = 3;
 
@@ -87,6 +88,12 @@ export const FEATURES: Feature[] = [
     fmt: (v) => `€${Math.round(v).toLocaleString()}/m²` },
   { key: 'costIndex', label: 'cost of living', group: 'cost', get: (t) => t.costIndex,
     high: 'expensive to live in', low: 'cheap to live in', fmt: (v) => String(Math.round(v)) },
+  { key: 'culture', label: 'cultural life', group: 'services', get: (t) => cultureScore(t),
+    high: 'museums and theatres within reach', low: 'quiet evenings',
+    fmt: (v) => `${Math.round(v * 100)}/100` },
+  { key: 'events', label: 'festivals', group: 'services', get: (t) => eventsScore(t),
+    high: 'big festivals nearby', low: 'few big festivals',
+    fmt: (v) => `${Math.round(v * 100)}/100` },
   { key: 'pm25', label: 'air quality', group: 'cost', get: (t) => t.pm25,
     high: 'polluted air', low: 'clean air', fmt: (v) => `${v.toFixed(1)} µg/m³` },
 ];

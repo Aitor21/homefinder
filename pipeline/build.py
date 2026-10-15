@@ -29,6 +29,7 @@ STAGES = [
     ("climate", "stages.climate"),
     ("access", "stages.access"),
     ("amenities", "stages.amenities"),
+    ("culture", "stages.culture"),
     ("terrain", "stages.terrain"),
     ("prices", "stages.prices"),
     ("airquality", "stages.airquality"),

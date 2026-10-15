@@ -22,6 +22,13 @@ import TownTable from './ui/TownTable';
 import TownDetail from './ui/TownDetail';
 import ListingsPanel from './ui/ListingsPanel';
 import Questionnaire from './ui/Questionnaire';
+import Onboarding from './ui/Onboarding';
+import TasteDeck from './ui/TasteDeck';
+import { SearchSummary } from './ui/QuickControls';
+import { useMedia } from './ui/bits';
+import { describeSearch, quickBase, type QuickAnswers, type Search } from './quickstart';
+import { EVENTS } from './culture';
+import { typicalOf, type ExplainCtx } from './explain';
 
 /**
  * Three ways to read the same ranking:
@@ -46,6 +53,36 @@ const SEEN = 'homefinder.wizard-seen.v1';
 // The clock you work to. Defaults to this device's, which is right for nearly
 // everyone; stored only when someone picks a different one.
 const WORK_TZ = 'homefinder.worktz.v1';
+// The search itself, filters and weights, so fine-tuning survives a reload.
+// Answers alone used to be stored and re-derived, which threw away every
+// slider moved afterwards. Saved over the defaults on load, so a field added
+// since is simply its default rather than undefined.
+const SEARCH = 'homefinder.search.v1';
+// What the quick start was last answered with, so "Start over" opens on it.
+const QUICK = 'homefinder.quick.v1';
+
+interface Saved {
+  filters: Partial<Filters>;
+  weights: Partial<Weights>;
+  notes?: string[];
+}
+
+function readJson<T>(key: string): T | null {
+  try {
+    const v = localStorage.getItem(key);
+    return v ? (JSON.parse(v) as T) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeJson(key: string, v: unknown) {
+  try {
+    localStorage.setItem(key, JSON.stringify(v));
+  } catch {
+    /* private browsing: nothing persists, everything still works */
+  }
+}
 
 function loadWorkTz(): string | null {
   try {
@@ -58,8 +95,11 @@ function loadWorkTz(): string | null {
 export default function App() {
   const [data, setData] = useState<Dataset | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
-  const [weights, setWeights] = useState<Weights>(DEFAULT_WEIGHTS);
+  // A new visitor starts from living somewhere, not buying. DEFAULT_FILTERS
+  // is still the base a saved search is merged over, so a search saved before
+  // intents existed comes back as the purchase search it was.
+  const [filters, setFilters] = useState<Filters>(() => quickBase().filters);
+  const [weights, setWeights] = useState<Weights>(() => quickBase().weights);
   const [mode, setMode] = useState<Mode>('score');
   const [selected, setSelected] = useState<string | null>(null);
   const [compareIne, setCompareIne] = useState<string | null>(null);
@@ -80,6 +120,19 @@ export default function App() {
   const [showBuilds, setShowBuilds] = useState(true);
   const [answers, setAnswers] = useState<Answers | undefined>(undefined);
   const [notes, setNotes] = useState<string[]>([]);
+  const [showOnboard, setShowOnboard] = useState(false);
+  const [quick, setQuick] = useState<QuickAnswers | undefined>(
+    () => readJson<QuickAnswers>(QUICK) ?? undefined,
+  );
+  const [showDeck, setShowDeck] = useState(false);
+  const [showEvents, setShowEvents] = useState(false);
+  // On a phone the list and the map take turns at the full screen, rather
+  // than each getting a third of it.
+  const [view, setView] = useState<'list' | 'map'>('list');
+  const phone = useMedia('(max-width: 700px)');
+  // Nothing is saved until the stored search has been read back, or the
+  // defaults would overwrite it on the very first render.
+  const [restored, setRestored] = useState(false);
 
   useEffect(() => {
     loadDataset()
@@ -91,19 +144,26 @@ export default function App() {
         // show unfiltered results under a profile that claims to be active.
         setHome(loadHome(new Set(d.towns.map((t) => t.country))));
         try {
-          const saved = localStorage.getItem(STORE);
-          if (!saved) {
-            if (!localStorage.getItem(SEEN)) setShowWizard(true);
-            return;
+          const search = readJson<Saved>(SEARCH);
+          const legacy = localStorage.getItem(STORE);
+          if (legacy) setAnswers(JSON.parse(legacy) as Answers);
+          if (search?.filters && search.weights) {
+            setFilters({ ...DEFAULT_FILTERS, ...search.filters });
+            setWeights({ ...DEFAULT_WEIGHTS, ...search.weights });
+            setNotes(search.notes ?? []);
+          } else if (legacy) {
+            // Answers saved by the questionnaire before searches were stored.
+            const p = buildProfile(JSON.parse(legacy) as Answers, d.towns);
+            setFilters(p.filters);
+            setWeights(p.weights);
+            setNotes(p.notes);
+          } else if (!localStorage.getItem(SEEN)) {
+            setShowOnboard(true);
           }
-          const a = JSON.parse(saved) as Answers;
-          const p = buildProfile(a, d.towns);
-          setAnswers(a);
-          setFilters(p.filters);
-          setWeights(p.weights);
-          setNotes(p.notes);
         } catch {
-          setShowWizard(true);
+          setShowOnboard(true);
+        } finally {
+          setRestored(true);
         }
       })
       .catch((e) => setErr(String(e)));
@@ -194,6 +254,17 @@ export default function App() {
 
   const rows = mode === 'near' ? near : mode === 'gems' ? gems : ranked;
 
+  // "Typical" for the reasons is always the main ranking: a near miss or a gem
+  // stands out against what you would otherwise be shown.
+  const typical = useMemo(() => typicalOf(ranked), [ranked]);
+  const explainCtx = useMemo<ExplainCtx>(
+    () => ({
+      weights, typical, budget: filters.budget, summerTarget: filters.summerTarget, homeIndex, homeName,
+      buying: filters.buying, months: filters.months,
+    }),
+    [weights, typical, filters.budget, filters.summerTarget, homeIndex, homeName, filters.buying, filters.months],
+  );
+
   const sel = useMemo<Ranked | null>(() => {
     if (!selected) return null;
     const hit =
@@ -214,6 +285,50 @@ export default function App() {
       excluded: true,
     };
   }, [rows, ranked, near, selected, byId, filters, scoreCtx, weights, env]);
+
+  useEffect(() => {
+    if (restored) writeJson(SEARCH, { filters, weights, notes } satisfies Saved);
+  }, [restored, filters, weights, notes]);
+
+  const markSeen = () => {
+    try {
+      localStorage.setItem(SEEN, '1');
+    } catch {
+      /* private mode: the worst case is being asked again */
+    }
+  };
+
+  const applySearch = (s: Search) => {
+    setFilters(s.filters);
+    setWeights(s.weights);
+  };
+
+  const finishOnboarding = (s: Search, a: QuickAnswers) => {
+    // Likes survive starting over: they are places, not settings.
+    setFilters({ ...s.filters, favourites: filters.favourites });
+    setWeights(s.weights);
+    setNotes(describeSearch(s, home, homeName));
+    setQuick(a);
+    writeJson(QUICK, a);
+    setShowOnboard(false);
+    setMode('score');
+    setSelected(null);
+    setView('list');
+    markSeen();
+  };
+
+  const chooseHome = (v: string | null) => {
+    setHome(v);
+    saveHome(v);
+  };
+
+  const toggleFavourite = (t: Town) =>
+    setFilters((f) => ({
+      ...f,
+      favourites: f.favourites.includes(t.id)
+        ? f.favourites.filter((x) => x !== t.id)
+        : [...f.favourites, t.id],
+    }));
 
   const applyProfile = (p: Profile, a: Answers) => {
     setFilters(p.filters);
@@ -249,7 +364,15 @@ export default function App() {
       </div>
     );
   }
-  if (!data) return <div className="empty">Loading {'…'}</div>;
+  if (!data) {
+    return (
+      <div className="loading">
+        <div className="spinner" aria-hidden />
+        <b>HomeFinder</b>
+        <span>Loading 31,000 places in 101 countries{'…'}</span>
+      </div>
+    );
+  }
 
   const countryCounts = new Map<string, { code: string; name: string; n: number }>();
   for (const t of towns) {
@@ -269,30 +392,22 @@ export default function App() {
         ).sort()
       : [];
 
+  const liked = new Set(filters.favourites);
+  const appClass = ['app', showFilters && 'filters-open', `view-${view}`, sel && 'detail-open']
+    .filter(Boolean).join(' ');
+
   return (
-    <div className={showFilters ? "app filters-open" : "app"}>
+    <div className={appClass}>
       <header>
-        <h1>HomeFinder</h1>
-        <span className="sub">
-          {data.meta.count.toLocaleString()} places in {countries.length} countries
-        </span>
-        <button
-          className="filtersbtn"
-          onClick={() => setShowFilters((v) => !v)}
-          aria-expanded={showFilters}
-        >
-          {showFilters ? 'Done' : 'Filters'}
-        </button>
+        <div className="brand">
+          <h1>HomeFinder</h1>
+          <span className="sub">
+            {data.meta.count.toLocaleString()} places in {countries.length} countries
+          </span>
+        </div>
         <label className="homepick" title="Everything money-related is shown relative to here">
-          I am in
-          <select
-            value={home ?? ''}
-            onChange={(e) => {
-              const v = e.target.value || null;
-              setHome(v);
-              saveHome(v);
-            }}
-          >
+          I live in
+          <select value={home ?? ''} onChange={(e) => chooseHome(e.target.value || null)}>
             <option value="">not set</option>
             {homeList.map((o) => (
               <option key={o.cc} value={o.cc}>
@@ -307,25 +422,33 @@ export default function App() {
           </span>
         )}
         <div className="spacer" />
-        <button className="primary small" onClick={() => setShowWizard(true)}>
-          {answers ? 'Edit preferences' : 'Set up'}
-        </button>
         <div className="modes" role="tablist" aria-label="How to rank">
-          <button className={mode === 'score' ? 'on' : ''} onClick={() => setMode('score')}>
+          <button role="tab" aria-selected={mode === 'score'} className={mode === 'score' ? 'on' : ''} onClick={() => setMode('score')}>
             Best fit
           </button>
           <button
+            role="tab"
+            aria-selected={mode === 'near'}
             className={mode === 'near' ? 'on' : ''}
             onClick={() => setMode('near')}
             title="Places that would be among your best if you forgave one or two things"
           >
             Near misses{near.length ? ` ${near.length}` : ''}
           </button>
-          <button className={mode === 'gems' ? 'on' : ''} onClick={() => setMode('gems')}>
+          <button
+            role="tab"
+            aria-selected={mode === 'gems'}
+            className={mode === 'gems' ? 'on' : ''}
+            onClick={() => setMode('gems')}
+            title="Places priced below what their quality implies (Spain, where prices are measured)"
+          >
             Gems
           </button>
         </div>
-        <button className="link" onClick={() => setShowListings(true)}>
+        <button className="ghost deskonly" onClick={() => setShowDeck(true)}>
+          <span aria-hidden>♥</span> Taste check
+        </button>
+        <button className="link deskonly" onClick={() => setShowListings(true)}>
           My listings
         </button>
         <span className="count">
@@ -345,8 +468,9 @@ export default function App() {
               back out. Hidden on desktop, where the sidebar is never covering
               anything. */}
           <div className="drawerbar">
-            <b>Filters</b>
-            <button onClick={() => setShowFilters(false)}>Done</button>
+            <b>Refine</b>
+            <span className="count">{rows.length.toLocaleString()} match</span>
+            <button onClick={() => setShowFilters(false)}>Show results</button>
           </div>
           <FilterPanel
             filters={filters}
@@ -365,11 +489,28 @@ export default function App() {
             onWorkTz={chooseWorkTz}
             onFilters={setFilters}
             onWeights={setWeights}
-            onOpenWizard={() => setShowWizard(true)}
+            onSearch={applySearch}
+            onOpenWizard={() => { setShowFilters(false); setShowWizard(true); }}
+            onStartOver={() => { setShowFilters(false); setShowOnboard(true); }}
+            home={home}
+            homeList={homeList}
+            onHome={chooseHome}
           />
+          <button className="link phoneonly listingslink" onClick={() => setShowListings(true)}>
+            My listings: import developments to plot
+          </button>
         </aside>
 
         <div className="center">
+          <SearchSummary
+            search={{ filters, weights }}
+            onSearch={applySearch}
+            home={home}
+            homeName={homeName}
+            onRefine={() => setShowFilters(true)}
+            onTaste={() => setShowDeck(true)}
+            likes={filters.favourites.length}
+          />
           <div className="mapwrap">
             <MapView
               ranked={rows}
@@ -380,6 +521,7 @@ export default function App() {
               listings={listings}
               showPlaces={showPlaces}
               showBuilds={showBuilds}
+              showEvents={showEvents}
             />
             <div className="layers">
               <label>
@@ -390,6 +532,14 @@ export default function App() {
                 />
                 {mode === 'near' ? 'Near misses' : 'Places'}{' '}
                 <span className="n">{rows.length.toLocaleString()}</span>
+              </label>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={showEvents}
+                  onChange={(e) => setShowEvents(e.target.checked)}
+                />
+                Festivals <span className="n">{EVENTS.length}</span>
               </label>
               <label className={listings.length ? '' : 'off'}>
                 <input
@@ -421,18 +571,23 @@ export default function App() {
             homeIndex={homeIndex}
             workTz={workTz}
             showPets={weights.pets > 0}
+            compact={phone}
+            liked={liked}
+            explain={explainCtx}
             selected={selected}
             onSelect={setSelected}
           />
         </div>
 
         {sel && (
-          <div className="detail">
+          <div className="detail" role="dialog" aria-label={sel.town.name}>
             <TownDetail
               ranked={sel}
               wouldRank={sel.forgiven != null ? wouldRank(ranked, sel.forgiven) : null}
               rankNow={sel.forgiven != null || sel.excluded ? wouldRank(ranked, sel.score) : null}
               filters={filters}
+              weights={weights}
+              explain={explainCtx}
               env={env}
               gemModel={gemModel}
               refs={refs}
@@ -445,14 +600,7 @@ export default function App() {
               developers={data.meta.developers}
               onClose={() => setSelected(null)}
               onRelax={(patch) => setFilters((f) => ({ ...f, ...patch }))}
-              onToggleFavourite={(t: Town) =>
-                setFilters((f) => ({
-                  ...f,
-                  favourites: f.favourites.includes(t.id)
-                    ? f.favourites.filter((x) => x !== t.id)
-                    : [...f.favourites, t.id],
-                }))
-              }
+              onToggleFavourite={toggleFavourite}
               onToggleAvoid={(t: Town) =>
                 setFilters((f) => ({
                   ...f,
@@ -466,6 +614,55 @@ export default function App() {
         )}
       </div>
 
+      {/* A phone's controls live at the bottom, where a thumb reaches. */}
+      <nav className="bottomnav" aria-label="Views">
+        <button className={view === 'list' && !showFilters ? 'on' : ''} onClick={() => { setShowFilters(false); setView('list'); }}>
+          <span aria-hidden>☰</span>List
+        </button>
+        <button className={view === 'map' && !showFilters ? 'on' : ''} onClick={() => { setShowFilters(false); setView('map'); }}>
+          <span aria-hidden>🗺️</span>Map
+        </button>
+        <button onClick={() => { setShowFilters(false); setShowDeck(true); }}>
+          <span aria-hidden>♥</span>Taste
+        </button>
+        <button className={showFilters ? 'on' : ''} onClick={() => setShowFilters((v) => !v)} aria-expanded={showFilters}>
+          <span aria-hidden>⚙️</span>Refine
+        </button>
+      </nav>
+
+      {showOnboard && (
+        <Onboarding
+          towns={towns}
+          home={home}
+          homeName={homeName}
+          homeList={homeList}
+          onHome={chooseHome}
+          env={env}
+          initial={quick}
+          onDone={finishOnboarding}
+          onSkip={() => {
+            setShowOnboard(false);
+            markSeen();
+          }}
+          onAdvanced={() => {
+            setShowOnboard(false);
+            markSeen();
+            setShowWizard(true);
+          }}
+        />
+      )}
+
+      {showDeck && (
+        <TasteDeck
+          ranked={rows}
+          all={towns}
+          favourites={filters.favourites}
+          affinity={affinity}
+          onLike={toggleFavourite}
+          onClose={() => setShowDeck(false)}
+        />
+      )}
+
       {showWizard && (
         <Questionnaire
           towns={towns}
@@ -474,11 +671,7 @@ export default function App() {
           onApply={applyProfile}
           onClose={() => {
             setShowWizard(false);
-            try {
-              localStorage.setItem(SEEN, '1');
-            } catch {
-              /* private mode: the worst case is being asked again */
-            }
+            markSeen();
           }}
         />
       )}

@@ -25,7 +25,7 @@ import common as c  # noqa: E402
 import countries as co  # noqa: E402
 import developers as dv  # noqa: E402
 
-STAGES = ("climate", "access", "amenities", "terrain", "prices",
+STAGES = ("climate", "access", "amenities", "culture", "terrain", "prices",
           "airquality", "internet", "costs")
 
 PLACE_FIELDS = ("id", "name", "country", "countryName", "continent", "ownership",
@@ -145,6 +145,8 @@ def run():
                              "hospitals, vets and dog parks worldwide; schools and cycleways Spain only",
                 "nature": "OpenStreetMap protected areas (IUCN 1-5), national parks and "
                           "nature reserves, measured to the edge",
+                "culture": "OpenStreetMap via Overpass: museums, theatres and concert halls, "
+                           "cinemas, live music and clubs, arts centres and galleries",
                 "safety": "UNODC intentional homicide rates via the World Bank, national",
                 "pets": "National veterinary authorities, checked Sep 2026; for a pet travelling from the EU",
                 "timeZones": "GeoNames IANA zones; offsets computed in the browser",

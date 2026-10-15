@@ -7,8 +7,8 @@ import type { Breakdown, HeldBack } from '../scoring';
  * because its own copy never learned that dimension existed.
  */
 export const DIM_LABEL: Record<keyof Breakdown, string> = {
-  summerFit: 'Right kind of summer',
-  affordability: 'Value',
+  summerFit: 'Right weather',
+  affordability: 'Housing costs',
   airport: 'Airports',
   city: 'City access',
   amenities: 'Services',
@@ -26,6 +26,11 @@ export const DIM_LABEL: Record<keyof Breakdown, string> = {
   ski: 'Ski slopes',
   pets: 'Good for a dog',
   safety: 'Safety',
+  culture: 'Museums & theatre',
+  events: 'Festivals & events',
+  water: 'Lakes & rivers',
+  altitude: 'Altitude',
+  flat: 'Flat, open country',
 };
 
 /** One reason a near miss is held back, as a short phrase with its numbers. */

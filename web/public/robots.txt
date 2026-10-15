@@ -1,0 +1,7 @@
+# Crawlers only read robots.txt at the root of a host, so on a GitHub Pages
+# project site this file is advisory; it takes effect wherever the app is
+# served from a domain root (Cloudflare Pages, Netlify, a custom domain).
+User-agent: *
+Allow: /
+
+Sitemap: https://aitor21.github.io/homefinder/sitemap.xml

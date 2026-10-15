@@ -3,18 +3,121 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>HomeFinder</title>
-    <meta name="description" content="Find where to buy a home by climate, connections and price, anywhere in the world." />
+    <title>HomeFinder: find where to live, work remotely or travel, by climate and lifestyle</title>
+    <meta name="description" content="Compare 31,500 towns and cities in 101 countries by weather, landscape, culture, festivals, cost of living, internet and safety. Find where to live, rent, work remotely, retire or travel. Free, no sign-up." />
+    <meta name="robots" content="index, follow, max-image-preview:large" />
+    <!-- One URL for this page, whatever query string or trailing path a link
+         adds. Absolute, because a relative canonical is ignored. -->
+    <link rel="canonical" href="https://aitor21.github.io/homefinder/" />
+    <meta name="author" content="Aitor Morales" />
     <meta name="theme-color" content="#1f6feb" />
+
+    <!-- How a shared link looks on WhatsApp, Slack, LinkedIn, X and the rest.
+         Image URLs must be absolute for every one of them. -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="HomeFinder" />
+    <meta property="og:title" content="HomeFinder: where would you love to live?" />
+    <meta property="og:description" content="31,500 places in 101 countries, ranked on weather, landscape, culture, costs and connections. For moving, renting, remote work, retiring or travel." />
+    <meta property="og:url" content="https://aitor21.github.io/homefinder/" />
+    <meta property="og:image" content="https://aitor21.github.io/homefinder/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="HomeFinder asks what brings you here: move and live, work remotely, rent, travel, retire or buy." />
+    <meta property="og:locale" content="en_GB" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="HomeFinder: where would you love to live?" />
+    <meta name="twitter:description" content="31,500 places in 101 countries, ranked on weather, landscape, culture, costs and connections." />
+    <meta name="twitter:image" content="https://aitor21.github.io/homefinder/og-image.png" />
+
     <!-- Drawn by web/scripts/icons.py from one set of shapes. The .ico is for
          browsers that ignore SVG icons; the SVG stays sharp everywhere else. -->
     <link rel="icon" href="/favicon.ico" sizes="32x32" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/site.webmanifest" />
+
+    <!-- Structured data: tells search engines this is a free web app, who made
+         it, and what it does, in a form they can show as a rich result. -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "HomeFinder",
+        "url": "https://aitor21.github.io/homefinder/",
+        "description": "Compare 31,500 towns and cities in 101 countries by weather, landscape, culture, festivals, cost of living, internet speed and safety, to find where to live, rent, work remotely, retire or travel.",
+        "applicationCategory": "LifestyleApplication",
+        "operatingSystem": "Any (runs in the browser)",
+        "inLanguage": "en",
+        "isAccessibleForFree": true,
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "EUR" },
+        "image": "https://aitor21.github.io/homefinder/og-image.png",
+        "author": { "@type": "Person", "name": "Aitor Morales", "url": "https://aitormorales.com/" },
+        "featureList": [
+          "Ranks 31,500 places in 101 countries",
+          "Weather by month for travel, or year-round for living",
+          "Landscape: coast, mountains, lakes, highlands, forests, flat country",
+          "Culture and 333 major festivals and events",
+          "Cost of living, housing costs, broadband speed, air quality, safety",
+          "Remote work: internet speed and time difference from your clock",
+          "Optional purchase budget, with where foreigners may buy"
+        ]
+      }
+    </script>
+
+    <!-- Only for the moment before the app's script runs, and for crawlers
+         that read the HTML without running it. The app replaces all of it. -->
+    <style>
+      .seo { max-width: 760px; margin: 0 auto; padding: 48px 20px; font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #1a1d21; }
+      .seo h1 { font-size: 28px; line-height: 1.25; letter-spacing: -0.02em; margin: 0 0 12px; }
+      .seo h2 { font-size: 17px; margin: 28px 0 8px; }
+      .seo p, .seo li { color: #5b6470; }
+      .seo .load { color: #1f6feb; font-weight: 600; }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <main class="seo">
+        <h1>HomeFinder: find where you would love to live, work or travel</h1>
+        <p class="load">Loading 31,500 places in 101 countries…</p>
+        <p>
+          HomeFinder ranks 31,538 towns and cities in 101 countries on what it is actually
+          like to be there: the weather, the landscape, things to do, what it costs and how
+          well connected it is. Tell it what you are looking for in four taps and it explains
+          every suggestion in plain words, with the numbers behind it.
+        </p>
+
+        <h2>For moving, renting, remote work, retiring or travel</h2>
+        <ul>
+          <li><strong>Move and live:</strong> places that suit your climate, landscape and way of life.</li>
+          <li><strong>Work remotely:</strong> fast measured broadband, flights out, sensible living costs, your time zone.</li>
+          <li><strong>Rent:</strong> affordable housing and everyday services nearby.</li>
+          <li><strong>Travel:</strong> pick your months and see where the weather, rain and festivals suit you then.</li>
+          <li><strong>Retire:</strong> mild winters, health care within reach, calm and safe.</li>
+          <li><strong>Buy a home:</strong> an optional budget and size filter, and whether a foreigner may buy there at all.</li>
+        </ul>
+
+        <h2>What it compares</h2>
+        <ul>
+          <li>Climate: summer heat, warm nights, winters, rain and sunshine, month by month.</li>
+          <li>Landscape: coast and beaches, mountains, lakes and rivers, highlands, forests and national parks, flat open country.</li>
+          <li>Culture and events: museums, theatre and live music, and 333 major festivals, from Primavera Sound and Las Fallas to the Edinburgh Fringe and Fuji Rock.</li>
+          <li>Costs: cost of living against your home country, housing costs, heating and cooling bills.</li>
+          <li>Connections: drive time to airports, public transport, distance to cities, flight time home.</li>
+          <li>Quality of life: broadband speed, air quality, safety, local services, skiing, and living with a dog.</li>
+        </ul>
+
+        <h2>Open data, shown honestly</h2>
+        <p>
+          Built from open sources: WorldClim and ERA5 climate data, OpenStreetMap, Ookla
+          speed tests, World Bank price levels, CAMS air quality and UNODC safety figures.
+          Estimates are labelled as estimates, and anything not measured is left out rather
+          than guessed. Free, with no sign-up and no tracking; everything runs in your browser.
+        </p>
+        <noscript>
+          <p><strong>HomeFinder needs JavaScript to run.</strong> Please enable it to search and compare places.</p>
+        </noscript>
+      </main>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

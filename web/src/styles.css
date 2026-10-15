@@ -420,18 +420,396 @@ label.sel select {
   border: 1px solid var(--line); background: var(--panel); color: var(--ink); width: 100%;
 }
 
+/* ===================================================== quick start (FTUE)
+
+   The first visit is a full-screen, four-step flow of big tiles. Big because
+   each one is the whole answer: one tap, no slider, no Next button. */
+
+.onboard {
+  position: fixed; inset: 0; z-index: 1300;
+  display: flex; align-items: center; justify-content: center; padding: 24px;
+  background:
+    radial-gradient(1200px 600px at 10% -10%, #dce9ff 0%, transparent 60%),
+    radial-gradient(900px 500px at 110% 110%, #ffe9d6 0%, transparent 55%),
+    var(--bg);
+  overflow-y: auto;
+}
+.onboard-card {
+  width: min(760px, 100%); max-height: 100%;
+  display: flex; flex-direction: column;
+  background: var(--panel); border-radius: 16px;
+  box-shadow: 0 20px 60px rgba(20, 30, 50, .14);
+}
+.onboard-top {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 16px 22px 0;
+}
+.progress { display: flex; gap: 5px; flex: 1; max-width: 220px; }
+.progress i { flex: 1; height: 4px; border-radius: 2px; background: var(--line); transition: background .2s; }
+.progress i.on { background: var(--accent); }
+.onboard-body { padding: 18px 22px 8px; overflow-y: auto; }
+.onboard-body h2 { font-size: 22px; letter-spacing: -0.02em; margin: 0 0 6px; line-height: 1.25; }
+.onboard-body .sub { color: var(--ink-2); font-size: 13.5px; margin: 0 0 16px; line-height: 1.5; }
+.eyebrow { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--accent); font-weight: 700; margin: 0 0 6px; }
+
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
+.tiles.two { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+.tiles.vibes { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.tile {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 3px;
+  text-align: left; font: inherit; color: var(--ink); cursor: pointer;
+  padding: 14px 14px 13px; border-radius: 12px;
+  border: 1.5px solid var(--line); background: var(--panel);
+  transition: border-color .12s, background .12s, transform .12s, box-shadow .12s;
+}
+.tile:hover { border-color: #b9c6d8; box-shadow: 0 2px 10px rgba(20, 30, 50, .06); }
+.tile:active { transform: scale(.98); }
+.tile.on { border-color: var(--accent); background: var(--accent-soft); box-shadow: 0 0 0 3px rgba(31, 111, 235, .12); }
+.tile .ico { font-size: 26px; line-height: 1; margin-bottom: 4px; }
+.tile b { font-size: 14.5px; font-weight: 650; }
+.tile small { font-size: 12px; color: var(--ink-2); line-height: 1.4; }
+.tile small.eg { color: var(--ink-3); font-style: italic; }
+.tile.small { flex-direction: row; align-items: center; gap: 9px; padding: 11px 12px; }
+.tile.small .ico { font-size: 20px; margin: 0; }
+.tile.small b { font-size: 13px; font-weight: 600; }
+
+.seg { display: flex; gap: 4px; margin-bottom: 14px; flex-wrap: wrap; }
+.seg button {
+  font: inherit; font-size: 12.5px; padding: 7px 12px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--panel); color: var(--ink-2);
+}
+.seg button small { color: var(--ink-3); margin-left: 3px; }
+.seg button.on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.seg.wrap { margin-bottom: 4px; }
+.seg.wrap button { font-size: 11.5px; padding: 4px 9px; }
+
+.homeline {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
+  margin-top: 16px; font-size: 12.5px; color: var(--ink-2);
+}
+.homeline select {
+  font: inherit; font-size: 12.5px; padding: 4px 8px; border-radius: 6px;
+  border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+}
+.subtle { color: var(--ink-3); font-size: 11.5px; }
+
+.onboard-foot {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 12px 22px 16px; border-top: 1px solid var(--line-2); margin-top: 8px;
+}
+.onboard-foot .count { font-size: 12.5px; }
+.onboard-foot .count b { color: var(--ink); font-size: 15px; }
+.onboard-foot > :last-child { justify-self: end; }
+
+.loading {
+  height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 8px; color: var(--ink-2);
+}
+.loading b { font-size: 18px; color: var(--ink); letter-spacing: -0.01em; }
+.spinner {
+  width: 28px; height: 28px; border-radius: 50%;
+  border: 3px solid var(--line); border-top-color: var(--accent);
+  animation: spin .8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ===================================================== taste deck */
+
+.deck { width: min(460px, 100%); display: flex; flex-direction: column; gap: 12px; }
+.deckhead { display: flex; justify-content: space-between; align-items: start; gap: 10px; }
+.deckhead h2 { margin: 0 0 2px; font-size: 18px; letter-spacing: -0.01em; }
+.tcard {
+  position: relative; touch-action: pan-y; user-select: none; cursor: grab;
+  border: 1px solid var(--line); border-radius: 14px; padding: 14px;
+  background: linear-gradient(180deg, #fbfcff, var(--panel));
+  box-shadow: 0 6px 22px rgba(20, 30, 50, .08);
+  transition: transform .2s ease-out, opacity .2s;
+}
+.tcard:active { cursor: grabbing; transition: none; }
+.tcard.out-right { transform: translateX(120%) rotate(12deg); opacity: 0; }
+.tcard.out-left { transform: translateX(-120%) rotate(-12deg); opacity: 0; }
+.tname { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; }
+.tname b { font-size: 19px; letter-spacing: -0.01em; }
+.flag, .cflag { font-size: 26px; line-height: 1; }
+.cflag { font-size: 18px; }
+.stamp {
+  position: absolute; top: 14px; padding: 2px 10px; border-radius: 6px;
+  font-weight: 800; letter-spacing: .08em; font-size: 15px; pointer-events: none;
+  border: 2px solid; background: rgba(255, 255, 255, .85);
+}
+.stamp.yes { right: 14px; color: var(--good); }
+.stamp.no { left: 14px; color: var(--hot); }
+.deckbtns { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.deckbtns button {
+  font: inherit; font-size: 14px; font-weight: 650; padding: 12px; border-radius: 12px;
+  cursor: pointer; border: 1.5px solid var(--line); background: var(--panel); color: var(--ink-2);
+}
+.deckbtns button.yes { border-color: var(--good); background: #eef8f2; color: #1c6b46; }
+.deckbtns button.nope:hover { border-color: var(--hot); color: var(--hot); }
+.hintline.center { text-align: center; margin: 0; }
+.deckdone h4 { font-size: 11px; text-transform: uppercase; letter-spacing: .07em; color: var(--ink-3); margin: 12px 0 6px; }
+.deckdone .sub { color: var(--ink-2); }
+
+.monthstrip { display: grid; grid-template-columns: repeat(12, 1fr); gap: 3px; height: 92px; margin: 4px 0 12px; }
+.mcol { display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 2px; min-width: 0; }
+.mcol i { display: block; width: 100%; border-radius: 3px 3px 1px 1px; }
+.mval { font: 9.5px var(--mono); color: var(--ink-3); }
+.mlbl { font-size: 10px; color: var(--ink-3); }
+
+.hl { display: flex; flex-wrap: wrap; gap: 5px; margin: 2px 0 6px; }
+.hlchip {
+  font-size: 11.5px; line-height: 1.3; padding: 3px 8px; border-radius: 999px;
+  background: var(--line-2); color: var(--ink-2); white-space: nowrap;
+}
+
+/* ===================================================== search summary */
+
+.summary {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 8px 12px; background: var(--panel); border-bottom: 1px solid var(--line);
+}
+.chiprow { display: flex; gap: 6px; flex-wrap: wrap; flex: 1; min-width: 0; }
+.schip {
+  display: inline-flex; align-items: center; gap: 4px; font: inherit; font-size: 12px;
+  padding: 3px 4px 3px 9px; border-radius: 999px; white-space: nowrap;
+  background: var(--accent-soft); color: #1d4f9e; border: 1px solid #c9dafb;
+}
+.schip button {
+  border: 0; background: transparent; color: inherit; cursor: pointer; font-size: 14px;
+  line-height: 1; padding: 0 5px; border-radius: 50%; opacity: .6;
+}
+.schip button:hover { opacity: 1; background: rgba(31, 111, 235, .12); }
+.schip.add { cursor: pointer; padding: 3px 10px; background: var(--panel); color: var(--accent); border-style: dashed; }
+.tastecta {
+  font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap;
+  padding: 5px 12px; border-radius: 999px; border: 0;
+  background: linear-gradient(90deg, #ffe3ec, #ffeede); color: #a8325a;
+}
+button.ghost {
+  font: inherit; font-size: 12px; font-weight: 600; padding: 5px 11px; border-radius: 7px;
+  cursor: pointer; border: 1px solid #f2c4d3; background: #fff5f8; color: #a8325a;
+}
+
+/* ===================================================== filter panel */
+
+.quick h3 {
+  font-size: 11px; text-transform: uppercase; letter-spacing: .07em;
+  color: var(--ink-3); margin: 12px 0 6px; font-weight: 650;
+}
+.quick h3:first-child { margin-top: 0; }
+.quick .hint { font-size: 11px; color: var(--ink-3); margin-bottom: 4px; }
+.vibechips { display: flex; flex-wrap: wrap; gap: 4px; }
+.vibechips button {
+  font: inherit; font-size: 11.5px; padding: 4px 9px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--panel); color: var(--ink-2);
+}
+.vibechips button.on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+
+.foldhead {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+  margin: 20px 0 4px; padding-top: 12px; border-top: 1px solid var(--line);
+  font-size: 12px; font-weight: 650; color: var(--ink); flex-wrap: wrap;
+}
+.foldhead span { white-space: nowrap; }
+details.fold { margin: 0; border-bottom: 1px solid var(--line-2); }
+details.fold > summary {
+  list-style: none; cursor: pointer; padding: 9px 0; font-size: 12.5px; font-weight: 600;
+  color: var(--ink-2); display: flex; align-items: center; gap: 6px;
+}
+details.fold > summary::-webkit-details-marker { display: none; }
+details.fold > summary::before {
+  content: ''; width: 6px; height: 6px; flex-shrink: 0;
+  border-right: 1.5px solid var(--ink-3); border-bottom: 1.5px solid var(--ink-3);
+  transform: rotate(-45deg); transition: transform .15s; margin-right: 3px;
+}
+details.fold[open] > summary::before { transform: rotate(45deg); }
+details.fold[open] > summary { color: var(--ink); }
+details.fold[open] { padding-bottom: 10px; }
+details.fold > summary .link { margin-left: auto; }
+.sub3 { font-size: 11px; text-transform: uppercase; letter-spacing: .07em; color: var(--ink-3); margin: 14px 0 7px; font-weight: 650; }
+.panelfoot { display: flex; flex-direction: column; gap: 6px; align-items: stretch; margin-top: 16px; }
+.panelfoot .link { align-self: flex-start; margin-top: 4px; }
+
+/* ===================================================== town panel */
+
+.dhead { display: flex; justify-content: space-between; align-items: start; gap: 10px; }
+.dhead h2 { display: flex; align-items: center; gap: 6px; }
+.closebtn {
+  flex-shrink: 0; width: 30px; height: 30px; border-radius: 50%; cursor: pointer;
+  border: 1px solid var(--line); background: var(--panel); color: var(--ink-2); font-size: 13px;
+}
+.closebtn:hover { color: var(--ink); border-color: var(--ink-3); }
+.dactions { display: flex; gap: 8px; margin: 8px 0 14px; }
+.dactions .chipbtn { text-decoration: none; display: inline-flex; align-items: center; }
+.likebtn {
+  font: inherit; font-size: 13px; font-weight: 650; padding: 8px 14px; border-radius: 8px; cursor: pointer;
+  border: 1.5px solid #f2c4d3; background: #fff5f8; color: #a8325a;
+}
+.likebtn.on { background: #a8325a; border-color: #a8325a; color: #fff; }
+.events { list-style: none; margin: 4px 0 8px; padding: 0; }
+.events li {
+  display: grid; grid-template-columns: 22px 1fr auto; gap: 6px; align-items: baseline;
+  padding: 5px 0; border-bottom: 1px solid var(--line-2); font-size: 12px;
+}
+.events .ename .pill { margin-left: 6px; }
+.events .ekm { font: 11px var(--mono); color: var(--ink-3); white-space: nowrap; }
+
+/* ===================================================== result cards (phone) */
+
+.card {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+  padding: 10px 12px; cursor: pointer;
+}
+.card.sel { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(31, 111, 235, .14); }
+.crow { display: flex; align-items: center; gap: 9px; margin-bottom: 6px; }
+.crow .rank { font: 11px var(--mono); color: var(--ink-3); width: 22px; text-align: right; flex-shrink: 0; }
+.cname { flex: 1; min-width: 0; }
+.cname b { font-size: 14px; }
+.cname .subtle { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.heart { color: #a8325a; }
+.cscore { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; flex-shrink: 0; }
+.cscore b { font: 700 15px var(--mono); }
+.cscore .bar { width: 52px; min-width: 0; }
+.card .held { margin-bottom: 6px; }
+
+/* ===================================================== suggestions
+
+   A suggestion reads top to bottom: who and where, how it ranks, then WHY in
+   a line or three, then the facts. The why is the part a score cannot say. */
+
+.cards { list-style: none; margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 10px; padding: 10px; }
+.card { transition: border-color .12s, box-shadow .12s; outline: none; }
+.card:hover { border-color: #c4cfdd; box-shadow: 0 2px 10px rgba(20, 30, 50, .06); }
+.card:focus-visible { box-shadow: 0 0 0 3px rgba(31, 111, 235, .25); }
+.cscore { align-items: center; }
+.scorepill {
+  display: inline-block; min-width: 34px; text-align: center; padding: 3px 7px; border-radius: 8px;
+  font: 700 14px var(--mono); color: #fff; background: #8b95a1;
+}
+.scorepill.s-top { background: #2d7dd2; }
+.scorepill.s-good { background: #3f9b7a; }
+.scorepill.s-mid { background: #c9a23a; }
+.scorepill.s-low { background: #c46a4f; }
+.share { font-size: 10px; color: var(--ink-3); white-space: nowrap; }
+.gemline { margin: -2px 0 4px; }
+
+.why { list-style: none; margin: 2px 0 7px; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.why li { font-size: 12.5px; line-height: 1.4; color: var(--ink); }
+.why li span[aria-hidden] {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 15px; height: 15px; border-radius: 50%; font-size: 10px; font-weight: 800; margin-right: 4px;
+  vertical-align: 1px;
+}
+.why li.strength span[aria-hidden] { background: #e2f3ea; color: #1c6b46; }
+.why li.tradeoff { color: var(--ink-2); }
+.why li.tradeoff span[aria-hidden] { background: #fdeee0; color: #9a5b1c; }
+.why.big li { font-size: 13px; padding: 3px 0; }
+.why.big .subtle { font-size: 10.5px; }
+.detail .hint { font-size: 11px; color: var(--ink-3); line-height: 1.45; margin: 4px 0 8px; }
+td.whytd { text-align: left; }
+.whycell { display: inline-block; max-width: 230px; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; color: var(--ink-2); }
+
+.seg.mini { margin: 0; flex-wrap: nowrap; }
+.seg.mini button { font-size: 11.5px; padding: 4px 10px; }
+
+.morebar { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 6px 12px 18px; }
+
+/* --- areas ------------------------------------------------------------ */
+.areas { list-style: none; margin: 0; padding: 10px; display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 10px; }
+.area, .card { min-width: 0; }
+.area { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
+.ahead { display: flex; align-items: center; gap: 9px; margin-bottom: 6px; }
+.ahead .rank { font: 11px var(--mono); color: var(--ink-3); width: 22px; text-align: right; flex-shrink: 0; }
+.ahead b { font-size: 14px; }
+.abest {
+  display: block; width: 100%; text-align: left; font: inherit; font-size: 13px; cursor: pointer;
+  border: 0; background: var(--accent-soft); color: var(--ink); border-radius: 8px; padding: 6px 9px; margin-bottom: 5px;
+}
+.abest:hover { background: #dbe8fd; }
+.alts { display: flex; flex-wrap: wrap; gap: 4px; }
+.alt {
+  font: inherit; font-size: 11.5px; padding: 3px 8px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--panel); color: var(--ink-2);
+}
+.alt:hover, .alt.on { border-color: var(--accent); color: var(--accent); }
+.alt.more { border-style: dashed; color: var(--accent); }
+
+/* --- town panel -------------------------------------------------------- */
+.tabs {
+  display: flex; gap: 2px; margin: 4px 0 6px; padding: 3px; border-radius: 9px; background: var(--line-2);
+  position: sticky; top: 0; z-index: 3;
+}
+.tabs button {
+  flex: 1; border: 0; background: transparent; font: inherit; font-size: 12px; cursor: pointer;
+  padding: 6px 4px; border-radius: 7px; color: var(--ink-2);
+}
+.tabs button.on { background: var(--panel); color: var(--ink); font-weight: 650; box-shadow: 0 1px 2px rgba(0, 0, 0, .08); }
+.dlinks { margin: 10px 0 0; }
+.detail h4.buyhead { margin-top: 26px; padding-top: 14px; border-top: 1px solid var(--line); }
+
+.schart { display: flex; flex-direction: column; gap: 5px; }
+.srow { display: grid; grid-template-columns: 1fr 44px 92px 26px; gap: 8px; align-items: center; font-size: 11.5px; }
+.slbl { color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.srow.weak .slbl { color: var(--hot); font-weight: 600; }
+.sw { display: flex; gap: 2px; }
+.sw i { width: 6px; height: 6px; border-radius: 50%; background: var(--line); }
+.sw i.on { background: var(--ink-2); }
+.sw i.half { background: #b5bdc8; }
+.sbar { height: 7px; border-radius: 4px; background: var(--line-2); overflow: hidden; }
+.sbar i { display: block; height: 100%; border-radius: 4px; }
+.sbar i.hi { background: var(--good); }
+.sbar i.mid { background: #d6b04c; }
+.sbar i.lo { background: var(--hot); }
+.snum { text-align: right; font: 11px var(--mono); color: var(--ink-3); }
+.snote { margin-top: 6px; line-height: 1.45; }
+
+/* --- map --------------------------------------------------------------- */
+.pin span {
+  display: flex; align-items: center; justify-content: center; width: 24px; height: 24px;
+  border-radius: 50%; background: #1a1d21; color: #fff; font: 700 11px var(--mono);
+  border: 2px solid #fff; box-shadow: 0 1px 4px rgba(0, 0, 0, .35);
+}
+.pin.sel span { background: var(--accent); transform: scale(1.2); }
+.fitbtn {
+  width: 34px; height: 34px; font-size: 17px; cursor: pointer; border-radius: 4px;
+  border: 2px solid rgba(0, 0, 0, .2); background: #fff; color: var(--ink); background-clip: padding-box;
+}
+.fitbtn:hover { background: #f4f4f4; }
+
+/* ===================================================== intents, months, groups */
+
+.months { display: grid; grid-template-columns: repeat(6, 1fr); gap: 5px; margin: 0 0 14px; }
+.months button {
+  font: inherit; font-size: 12.5px; padding: 8px 0; border-radius: 8px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--panel); color: var(--ink-2);
+}
+.months button.on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 650; }
+.months.compact { grid-template-columns: repeat(6, 1fr); gap: 3px; margin-bottom: 4px; }
+.months.compact button { font-size: 11px; padding: 4px 0; }
+.tilegroup {
+  font-size: 11px; text-transform: uppercase; letter-spacing: .07em; color: var(--ink-3);
+  margin: 14px 0 7px; font-weight: 650;
+}
+.tilegroup:first-of-type { margin-top: 0; }
+.schip.intent { background: #1a1d21; color: #fff; border-color: #1a1d21; font-weight: 600; padding-right: 10px; }
+.hlchip.on { background: #fde9f0; color: #a8325a; font-weight: 600; }
+
+/* Hidden on desktop, where the sidebar is always visible and the header has
+   room for everything. */
+.scrim { display: none; }
+.drawerbar { display: none; }
+.bottomnav { display: none; }
+.phoneonly { display: none; }
+aside .homesel { display: none; }
+
 /* =======================================================================
    Small screens
    =======================================================================
    The desktop layout is three fixed columns needing about 1100 px. Below 900
-   the columns stack, and the two panels that cannot shrink usefully become
-   sheets. Everything above this line is the wide layout and is left alone.
+   it becomes an app: one view at a time (the list or the map), switched from
+   a bar at the bottom where a thumb reaches, with the filters and the town
+   panel as sheets over it.
    ===================================================================== */
-
-/* Hidden on desktop, where the sidebar is always visible. */
-.filtersbtn { display: none; }
-.scrim { display: none; }
-.drawerbar { display: none; }
 
 /* Stacking order, written down in one place because it was not obvious that
    Leaflet brings its own. Its controls sit at 1000, which beat the drawer and
@@ -439,50 +817,52 @@ label.sel select {
 
      400-1000  Leaflet's panes and controls, from its own stylesheet
      1050      the scrim behind a drawer
-     1100      the filter drawer and the town sheet
-     1200      modal dialogs, which cover everything */
+     1100      the filter drawer
+     1150      the bottom navigation, which stays reachable over the drawer
+     1160      the town sheet
+     1200      modal dialogs, which cover everything
+     1300      the first-visit quick start */
 
 @media (max-width: 900px) {
-  /* --- header: two rows rather than one long one -------------------- */
+  :root { --nav-h: calc(58px + env(safe-area-inset-bottom, 0px)); }
+
+  /* --- header: compact, with the ranking modes as its second row ----- */
   header {
     flex-wrap: wrap;
-    gap: 8px 10px;
-    padding: 8px 12px;
-    row-gap: 6px;
+    gap: 6px 10px;
+    padding: 8px 12px 6px;
   }
-  header h1 { font-size: 14px; }
-  header .sub { font-size: 11px; width: 100%; order: 10; }
+  header h1 { font-size: 15px; }
+  header .brand { display: flex; align-items: baseline; gap: 8px; flex: 1; min-width: 0; }
+  header .sub { font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   header .spacer { display: none; }
-  .homepick { margin-left: 0; font-size: 11px; }
-  .homepick select { max-width: 128px; }
-  /* The passport caveat is worth keeping but not worth a line of its own
-     on a phone; it stays in the title attribute. */
+  /* The home picker moves into the Refine sheet: the header has no room. */
+  header .homepick { display: none; }
   .warn { display: none; }
-  .modes button { padding: 5px 9px; }
+  .deskonly { display: none; }
+  .phoneonly { display: inline; }
+  .modes { order: 10; width: 100%; }
+  .modes button { flex: 1; padding: 6px 8px; }
+  header .count { font-size: 11px; }
 
-  .filtersbtn {
-    display: inline-block;
-    border: 1px solid var(--accent); background: var(--accent-soft);
-    color: var(--accent); font: inherit; font-size: 12px; font-weight: 600;
-    padding: 5px 11px; border-radius: 6px; cursor: pointer;
-  }
+  /* --- body ---------------------------------------------------------- */
+  .body { flex-direction: column; padding-bottom: var(--nav-h); }
 
-  /* --- body: stack instead of three columns ------------------------- */
-  .body { flex-direction: column; }
-
-  /* The filter panel becomes a sheet anchored to the left edge. Transform
-     rather than display, so it slides and so its scroll position survives
-     being closed and reopened. */
+  /* The filter panel becomes a sheet from the left; on a phone, the whole
+     width. Transform rather than display, so it slides and so its scroll
+     position survives being closed and reopened. */
   aside {
-    position: fixed; top: 0; left: 0; bottom: 0; z-index: 1100;
-    width: min(320px, 86vw);
+    position: fixed; top: 0; left: 0; bottom: var(--nav-h); z-index: 1100;
+    width: min(380px, 100vw);
     border-right: 1px solid var(--line);
     box-shadow: 0 0 40px rgba(0, 0, 0, .18);
-    transform: translateX(-100%);
-    transition: transform .18s ease-out;
+    transform: translateX(-102%);
+    transition: transform .2s ease-out;
     padding-top: 14px;
   }
   .filters-open aside { transform: translateX(0); }
+  aside .homesel { display: flex; }
+  .listingslink { display: block; margin-top: 14px; }
 
   .filters-open .scrim {
     display: block; position: fixed; inset: 0; z-index: 1050;
@@ -491,58 +871,118 @@ label.sel select {
 
   /* Sticky so it stays reachable however far down the filters you scroll. */
   .drawerbar {
-    display: flex; align-items: center; justify-content: space-between;
+    display: flex; align-items: center; gap: 10px;
     position: sticky; top: 0; z-index: 1;
     margin: -14px -14px 12px; padding: 10px 14px;
     background: var(--panel); border-bottom: 1px solid var(--line);
   }
   .drawerbar b { font-size: 12px; text-transform: uppercase; letter-spacing: .07em;
                  color: var(--ink-3); }
+  .drawerbar .count { margin-left: auto; }
   .drawerbar button {
-    border: 1px solid var(--accent); background: var(--accent-soft);
-    color: var(--accent); font: inherit; font-size: 12px; font-weight: 600;
-    padding: 5px 14px; border-radius: 6px; cursor: pointer;
+    border: 0; background: var(--accent);
+    color: #fff; font: inherit; font-size: 12.5px; font-weight: 650;
+    padding: 7px 14px; border-radius: 8px; cursor: pointer;
   }
 
-  .center { min-height: 0; }
+  .center { min-height: 0; flex: 1; }
 
-  /* A map worth reading, without eating the whole screen. */
-  .mapwrap { height: 38vh; min-height: 190px; }
+  /* The ranking summary scrolls sideways rather than wrapping into rows. */
+  .summary { flex-wrap: nowrap; overflow-x: auto; padding: 7px 10px; gap: 8px; -webkit-overflow-scrolling: touch; }
+  .chiprow { flex-wrap: nowrap; flex: none; }
+  .summary::-webkit-scrollbar { display: none; }
+
+  /* One view at a time. */
+  .view-list .mapwrap { display: none; }
+  .view-map .tablewrap { display: none; }
+  .view-map .mapwrap { flex: 1; height: auto; min-height: 0; }
   .layers { top: 8px; right: 8px; padding: 6px 8px; max-width: 168px; font-size: 11px; }
   .layers .hint { display: none; }
 
-  /* The table keeps every column and scrolls sideways. Hiding columns would
-     make the phone a different tool rather than a smaller one. */
   .tablewrap { -webkit-overflow-scrolling: touch; }
+  .cards, .areas { grid-template-columns: 1fr; padding: 8px; gap: 8px; }
+  .searchbar { flex-wrap: wrap; }
+  .searchbar input { flex-basis: 100%; }
   table { font-size: 11px; }
   thead th, tbody td { padding: 6px 7px; }
 
-  /* The detail panel is a bottom sheet: it is a lot of text, and a phone
-     reads it better as a page than as a squeezed column. */
+  /* The town panel is a sheet up from the bottom, nearly full height: it is
+     a lot of text, and a phone reads it better as a page than as a squeezed
+     column. Its header sticks so closing it is always one tap away. */
   .detail {
-    position: fixed; left: 0; right: 0; bottom: 0; z-index: 1100;
-    width: auto; max-height: 82vh;
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 1160;
+    width: auto; max-height: calc(100% - 44px);
     border-left: 0; border-top: 1px solid var(--line);
-    border-radius: 12px 12px 0 0;
+    border-radius: 16px 16px 0 0;
     box-shadow: 0 -6px 30px rgba(0, 0, 0, .2);
-    padding-bottom: 28px;
+    padding: 0 16px calc(28px + env(safe-area-inset-bottom, 0px));
+    animation: sheetup .2s ease-out;
   }
+  .detail .dhead {
+    position: sticky; top: 0; z-index: 2; background: var(--panel);
+    margin: 0 -16px; padding: 14px 16px 8px;
+  }
+  .detail .dhead::before {
+    content: ''; position: absolute; top: 5px; left: 50%; width: 36px; height: 4px;
+    margin-left: -18px; border-radius: 2px; background: var(--line);
+  }
+  /* Only the name and close button stick on a phone: a stack of sticky bars
+     would eat half the sheet. */
+  .tabs { position: static; }
+  .dactions { margin-bottom: 8px; }
+  .dactions > * { flex: 1; justify-content: center; text-align: center; }
+
+  /* --- bottom navigation --------------------------------------------- */
+  .bottomnav {
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 1150;
+    height: var(--nav-h); padding-bottom: env(safe-area-inset-bottom, 0px);
+    background: rgba(255, 255, 255, .97); border-top: 1px solid var(--line);
+    backdrop-filter: blur(8px);
+  }
+  .bottomnav button {
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+    border: 0; background: none; font: inherit; font-size: 11px; color: var(--ink-3); cursor: pointer;
+  }
+  .bottomnav button span { font-size: 19px; line-height: 1; filter: grayscale(1) opacity(.65); }
+  .bottomnav button.on { color: var(--accent); font-weight: 650; }
+  .bottomnav button.on span { filter: none; }
 
   /* --- dialogs ------------------------------------------------------ */
   .overlay { padding: 0; align-items: flex-end; z-index: 1200; }
   .sheet, .wizard {
-    width: 100%; max-height: 92vh; border-radius: 12px 12px 0 0;
+    width: 100%; max-height: 94vh; border-radius: 16px 16px 0 0;
+    padding-bottom: calc(18px + env(safe-area-inset-bottom, 0px));
   }
   .searchbar { padding: 7px 8px; }
   .searchbar .count { display: none; }
+
+  /* The quick start fills a phone rather than floating in it. */
+  .onboard { padding: 0; align-items: stretch; }
+  .onboard-card { border-radius: 0; max-height: none; min-height: 100%; box-shadow: none; }
+  .onboard-body { flex: 1; }
+  .onboard-foot {
+    position: sticky; bottom: 0; background: var(--panel);
+    padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+  }
 }
+
+@keyframes sheetup { from { transform: translateY(30%); opacity: .4; } to { transform: none; opacity: 1; } }
 
 /* Phones proper: a little tighter again. */
 @media (max-width: 480px) {
-  .mapwrap { height: 32vh; min-height: 160px; }
-  header h1 { font-size: 13px; }
   header .sub { display: none; }
-  .homepick select { max-width: 108px; }
+  .onboard-top, .onboard-body, .onboard-foot { padding-left: 16px; padding-right: 16px; }
+  .onboard-body h2 { font-size: 20px; }
+  .tiles, .tiles.two { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .tile { padding: 12px 11px; }
+  .tile .ico { font-size: 22px; }
+  .tile b { font-size: 13.5px; }
+  .tile small { font-size: 11.5px; }
+  .tiles.vibes { grid-template-columns: 1fr 1fr; gap: 6px; }
+  .tile.small { padding: 10px; gap: 7px; }
+  .tile.small b { font-size: 12.5px; }
+  .monthstrip { height: 80px; }
 }
 
 /* Touch devices: targets big enough to hit. A 14 px slider thumb is fine
@@ -552,4 +992,7 @@ label.sel select {
   .regions button { padding: 7px 11px; }
   .chk { padding: 4px 0; }
   .layers label { padding: 5px 0; }
+  .seg.wrap button, .vibechips button { padding: 7px 11px; font-size: 12.5px; }
+  details.fold > summary { padding: 12px 0; font-size: 13.5px; }
+  .schip button { padding: 4px 7px; }
 }

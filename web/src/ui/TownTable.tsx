@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { Town } from '../types';
 import type { HeldBack, Ranked } from '../scoring';
 import { bestMatch, hubDriveMin } from '../scoring';
@@ -13,6 +13,12 @@ import { severity, wouldRank } from '../nearmiss';
 import { OWNERSHIP_LABEL } from '../types';
 import type { Mode } from '../App';
 import { heldLabel } from './labels';
+import { eventsNear } from '../culture';
+import { flag } from '../quickstart';
+import { usePref } from './bits';
+import ResultCard from './ResultCard';
+import { groupAreas } from '../areas';
+import { reasons, type ExplainCtx } from '../explain';
 
 interface Props {
   /** The rows to show: the ranking, the near misses or the gems. */
@@ -37,6 +43,12 @@ interface Props {
   workTz: string | null;
   /** Show the dog column: only once someone has said they care. */
   showPets: boolean;
+  /** A phone: cards rather than a twenty-column table. */
+  compact?: boolean;
+  /** Places the user liked, marked with a heart. */
+  liked?: ReadonlySet<string>;
+  /** What "typical" means in this list, and the weights, for the reasons. */
+  explain: ExplainCtx;
   selected: string | null;
   onSelect: (ine: string) => void;
 }
@@ -50,6 +62,7 @@ interface Ctx {
   homeIndex: number | null;
   workTz: string | null;
   base: Ranked[];
+  explain?: ExplainCtx;
 }
 
 type Col = {
@@ -124,6 +137,16 @@ const BASE_COLUMNS: Col[] = [
     label: 'Score',
     get: (r) => r.score,
     render: (r) => <Bar v={r.score} />,
+  },
+  {
+    key: 'why',
+    label: 'Stands out for',
+    title: 'What this place does better than the typical place in your results, on what you weight',
+    get: (r, c) => (c.explain ? reasons(r, c.explain, 1, 0)[0]?.text ?? '' : ''),
+    render: (r, c) => {
+      const w = c.explain ? reasons(r, c.explain, 2, 0) : [];
+      return <span className="whycell" title={w.map((x) => x.text).join(' · ')}>{w[0]?.text ?? ''}</span>;
+    },
   },
   {
     key: 'gem',
@@ -263,6 +286,28 @@ const BASE_COLUMNS: Col[] = [
       );
     },
   },
+  {
+    key: 'culture',
+    label: 'Culture',
+    title: 'Museums, theatres, cinemas and live music within reach. Estimated from city size until the venue survey has run',
+    get: (r) => r.breakdown.culture,
+    render: (r) => <Bar v={r.breakdown.culture * 100} />,
+  },
+  {
+    key: 'fests',
+    label: 'Fests',
+    title: 'Big recurring festivals and events within 100 km',
+    get: (r) => eventsNear(r.town).length,
+    render: (r) => {
+      const ev = eventsNear(r.town);
+      if (!ev.length) return '';
+      return (
+        <span title={ev.slice(0, 8).map((e) => `${e.event.name} (${Math.round(e.km)} km)`).join(', ')}>
+          {ev.length}
+        </span>
+      );
+    },
+  },
   { key: 'city', label: 'City km', get: (r) => r.town.city100kKm },
   { key: 'pop', label: 'Pop', get: (r) => r.town.pop, render: (r) => n0(r.town.pop) },
 ];
@@ -312,13 +357,18 @@ const fold = (v: string) =>
 
 export default function TownTable({
   ranked, base, all, reject, mode, gemModel, compare, refs, affinity, dist, homeIndex,
-  workTz, showPets, selected, onSelect,
+  workTz, showPets, compact, liked, explain, selected, onSelect,
 }: Props) {
   const [sort, setSort] = useState<{ key: string; dir: 1 | -1 } | null>(null);
   const [query, setQuery] = useState('');
+  // Cards explain; the table compares. Cards by default, and always on a phone.
+  const [layout, setLayout] = usePref('homefinder.layout.v1', 'cards', ['cards', 'table'] as const);
+  const [group, setGroup] = usePref('homefinder.group.v1', 'places', ['places', 'areas'] as const);
+  const [more, setMore] = useState(1);
+  const asCards = compact || layout === 'cards';
   const ctx: Ctx = useMemo(
-    () => ({ gem: gemModel, compare, refs, affinity, dist, homeIndex, workTz, base }),
-    [gemModel, compare, refs, affinity, dist, homeIndex, workTz, base],
+    () => ({ gem: gemModel, compare, refs, affinity, dist, homeIndex, workTz, base, explain }),
+    [gemModel, compare, refs, affinity, dist, homeIndex, workTz, base, explain],
   );
   const columns = useMemo(() => columnsFor(mode, showPets), [mode, showPets]);
 
@@ -368,6 +418,23 @@ export default function TownTable({
       .slice(0, 400);
   }, [hits, sort, ctx, columns]);
 
+  // What a row is ranked by in this mode, so areas sort the same way the list does.
+  const keyOf = (r: Ranked) => (mode === 'near' ? r.forgiven ?? r.score : mode === 'gems' ? r.gem ?? 0 : r.score);
+  const areas = useMemo(
+    () => (group === 'areas' ? groupAreas(hits, keyOf) : []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [group, hits, mode],
+  );
+  const best = rows.length ? Math.max(...rows.slice(0, 20).map((r) => (mode === 'near' ? r.forgiven ?? r.score : r.score))) : 100;
+  const PAGE = 50;
+  // A new search starts back at the first page.
+  useEffect(() => setMore(1), [ranked, q, group]);
+
+  const seeArea = (name: string) => {
+    setQuery(name);
+    setGroup('places');
+  };
+
   return (
     <div className="tablewrap">
       <div className="searchbar">
@@ -381,6 +448,24 @@ export default function TownTable({
           <span className="count">
             {hits.length.toLocaleString()} of {ranked.length.toLocaleString()} shown
           </span>
+        )}
+        <div className="seg mini" role="radiogroup" aria-label="Group results">
+          <button role="radio" aria-checked={group === 'places'} className={group === 'places' ? 'on' : ''} onClick={() => setGroup('places')}>
+            Places
+          </button>
+          <button role="radio" aria-checked={group === 'areas'} className={group === 'areas' ? 'on' : ''} onClick={() => setGroup('areas')} title="Group suggestions by region, best place first">
+            Areas
+          </button>
+        </div>
+        {!compact && group === 'places' && (
+          <div className="seg mini" role="radiogroup" aria-label="Layout">
+            <button role="radio" aria-checked={layout === 'cards'} className={layout === 'cards' ? 'on' : ''} onClick={() => setLayout('cards')}>
+              Cards
+            </button>
+            <button role="radio" aria-checked={layout === 'table'} className={layout === 'table' ? 'on' : ''} onClick={() => setLayout('table')} title="Every number, sortable">
+              Table
+            </button>
+          </div>
         )}
       </div>
 
@@ -447,6 +532,77 @@ export default function TownTable({
         </div>
       )}
 
+      {group === 'areas' && areas.length > 0 ? (
+        <ol className="areas">
+          {areas.slice(0, PAGE * more).map((a, i) => {
+            const top = a.places[0];
+            const why = reasons(top, explain, 2, 1);
+            return (
+              <li key={a.key} className="area">
+                <div className="ahead">
+                  <span className="rank">{i + 1}</span>
+                  <span className="cflag" aria-hidden>{flag(a.country)}</span>
+                  <div className="cname">
+                    <b>{a.name}</b>
+                    <div className="subtle">
+                      {a.countryName} {'·'} {a.places.length} {a.places.length === 1 ? 'match' : 'matches'}
+                      {' · '}~€{Math.round(a.medianEurM2).toLocaleString()}/m² {'·'} {Math.round(a.medianSummer)}° summers
+                    </div>
+                  </div>
+                  <span className="scorepill s-top" title="Best place in the area">{Math.round(mode === 'gems' ? top.score : keyOf(top))}</span>
+                </div>
+                <button className="abest" onClick={() => onSelect(top.town.id)}>
+                  <span className="subtle">Best:</span> <b>{top.town.name}</b>
+                  {liked?.has(top.town.id) && <span className="heart"> ♥</span>}
+                </button>
+                {why.length > 0 && (
+                  <ul className="why">
+                    {why.map((w) => (
+                      <li key={w.dim} className={w.kind}>
+                        <span aria-hidden>{w.kind === 'strength' ? '✓' : '!'}</span> {w.text}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {a.places.length > 1 && (
+                  <div className="alts">
+                    {a.places.slice(1, 5).map((p) => (
+                      <button key={p.town.id} className={p.town.id === selected ? 'alt on' : 'alt'} onClick={() => onSelect(p.town.id)}>
+                        {p.town.name} <span className="subtle">{Math.round(mode === 'gems' ? p.score : keyOf(p))}</span>
+                      </button>
+                    ))}
+                    {a.places.length > 5 && (
+                      <button className="alt more" onClick={() => seeArea(a.name)}>
+                        all {a.places.length} {'→'}
+                      </button>
+                    )}
+                  </div>
+                )}
+              </li>
+            );
+          })}
+        </ol>
+      ) : asCards ? (
+        <ol className="cards">
+          {hits.slice(0, PAGE * more).map((r, i) => (
+            <ResultCard
+              key={r.town.id}
+              r={r}
+              rank={i + 1}
+              total={hits.length}
+              best={best}
+              mode={mode}
+              gemModel={gemModel}
+              explain={explain}
+              liked={!!liked?.has(r.town.id)}
+              selected={r.town.id === selected}
+              onSelect={onSelect}
+            >
+              {mode === 'near' && <HeldChips held={r.held} town={r.town} />}
+            </ResultCard>
+          ))}
+        </ol>
+      ) : (
       <table>
         <thead>
           <tr>
@@ -486,7 +642,9 @@ export default function TownTable({
                         ? 'prov'
                         : c.key === 'held'
                           ? 'heldcol'
-                          : ''
+                          : c.key === 'why'
+                            ? 'whytd'
+                            : ''
                   }
                 >
                   {c.render
@@ -502,9 +660,21 @@ export default function TownTable({
           ))}
         </tbody>
       </table>
+      )}
       {/* Counts the searched set, not the whole ranking: after a search for one
           town, "top 1 of 8,235" was both true and useless. */}
-      {hits.length > rows.length && (
+      {(group === 'areas' ? areas.length : asCards ? hits.length : 0) > PAGE * more && (
+        <div className="morebar">
+          <button className="chipbtn" onClick={() => setMore((m) => m + 1)}>
+            Show {PAGE} more {group === 'areas' ? 'areas' : 'places'}
+          </button>
+          <span className="subtle">
+            {Math.min(PAGE * more, group === 'areas' ? areas.length : hits.length)} of{' '}
+            {(group === 'areas' ? areas.length : hits.length).toLocaleString()}
+          </span>
+        </div>
+      )}
+      {!asCards && group === 'places' && hits.length > rows.length && (
         <div className="empty" style={{ padding: '12px' }}>
           Showing the top {rows.length} of {hits.length.toLocaleString()}
           {q ? ` matching "${query.trim()}".` : '.'}
