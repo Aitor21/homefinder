@@ -34,6 +34,7 @@ import {
   type Breakdown, type Failure, type FailKey, type FilterEnv, type HeldBack,
   type Ranked, type ScoreContext,
 } from './scoring';
+import { weatherHigh } from './climate';
 
 /** At most this many things forgiven per place: "one or two", no more. */
 export const MAX_FORGIVE = 2;
@@ -152,8 +153,8 @@ export function relaxFor(x: Failure, t: Town, f: Filters, env: FilterEnv = {}): 
     case 'budget': return { budget: up(t.eurM2 * f.minM2, 10_000) };
     case 'hotDays': return { maxDaysOver30: up(t.daysOver30, 1) };
     case 'warmNights': return { maxTropicalNights: up(t.tropicalNights, 1) };
-    case 'hotMax': return { maxHotTmax: up(t.hottestTmax, 1) };
-    case 'hotMin': return { minHotTmax: down(t.hottestTmax, 1) };
+    case 'hotMax': return { maxHotTmax: up(weatherHigh(t, f.months), 1) };
+    case 'hotMin': return { minHotTmax: down(weatherHigh(t, f.months), 1) };
     case 'winterMin': return { minWinterTmin: down(t.winterTmin, 1) };
     case 'airport': {
       const m = airportDriveMin(t);

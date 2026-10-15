@@ -19,7 +19,8 @@ import { DEFAULT_WEIGHTS } from './types';
 import type { Breakdown, Ranked } from './scoring';
 import { affordableM2, hubDriveMin, transitKm } from './scoring';
 import { formatDrive } from './travel';
-import { eventsNear, venuesSurveyed } from './culture';
+import { eventsNear, onDuring, venuesSurveyed } from './culture';
+import { monthLabel, rainIn, weatherHigh } from './climate';
 
 export type Typical = Partial<Record<keyof Breakdown, number>>;
 
@@ -52,6 +53,10 @@ export interface ExplainCtx {
   typical: Typical;
   budget: number;
   summerTarget: number | null;
+  /** Purchase budget on: money reads as what the budget buys. Off: as housing cost. */
+  buying?: boolean;
+  /** Months of a visit, so weather and festivals read for then. */
+  months?: number[];
   /** Home country's cost index, so living costs read against home. */
   homeIndex?: number | null;
   homeName?: string | null;
@@ -63,13 +68,19 @@ const r0 = (v: number) => Math.round(v).toLocaleString();
 export function fact(dim: keyof Breakdown, t: Town, c: ExplainCtx, good: boolean): string | null {
   switch (dim) {
     case 'summerFit': {
-      const h = Math.round(t.hottestTmax);
-      if (c.summerTarget == null) return `${h}° summer highs`;
-      const d = t.hottestTmax - c.summerTarget;
-      if (Math.abs(d) <= 1.5) return `${h}° summers, right on your ${c.summerTarget}°`;
-      return `${h}° summers, ${Math.round(Math.abs(d))}° ${d > 0 ? 'hotter' : 'cooler'} than you asked`;
+      const months = c.months ?? [];
+      const high = weatherHigh(t, months);
+      const h = Math.round(high);
+      const what = months.length ? `${h}° highs in ${monthLabel(months)}` : `${h}° summers`;
+      if (c.summerTarget == null) return what;
+      const d = high - c.summerTarget;
+      if (Math.abs(d) <= 1.5) return `${what}, right on your ${c.summerTarget}°`;
+      return `${what}, ${Math.round(Math.abs(d))}° ${d > 0 ? 'hotter' : 'cooler'} than you asked`;
     }
     case 'affordability':
+      if (c.buying === false) {
+        return good ? `Low housing costs (~€${r0(t.eurM2)}/m² to buy)` : `Expensive housing (~€${r0(t.eurM2)}/m² to buy)`;
+      }
       return `~€${r0(t.eurM2)}/m², your budget buys ${r0(affordableM2(t, c.budget))} m²`;
     case 'airport': {
       const m = hubDriveMin(t);
@@ -91,8 +102,12 @@ export function fact(dim: keyof Breakdown, t: Town, c: ExplainCtx, good: boolean
       return t.coastKm == null ? null : t.coastKm < 3 ? 'On the coast' : `${r0(t.coastKm)} km from the sea`;
     case 'winterMild':
       return `${Math.round(t.winterTmin)}° winter nights`;
-    case 'drier':
-      return `${r0(t.annualRain)} mm of rain a year`;
+    case 'drier': {
+      const r = rainIn(t, c.months ?? []);
+      return r == null
+        ? `${r0(t.annualRain)} mm of rain a year`
+        : `${r0(r)} mm of rain a month in ${monthLabel(c.months!)}${good ? ', mostly dry' : ''}`;
+    }
     case 'sunny':
       return good ? 'Bright, sunny climate' : 'Often overcast';
     case 'cleanAir':
@@ -123,9 +138,23 @@ export function fact(dim: keyof Breakdown, t: Town, c: ExplainCtx, good: boolean
     case 'culture':
       if (venuesSurveyed(t)) return `${t.museum15km} museums, ${t.theatre15km} theatres within 15 km`;
       return good ? 'Big-city culture within reach' : 'Little culture nearby';
+    case 'water':
+      return t.beachKm == null ? null : t.beachKm < 2 ? 'Lake or river beach in town' : `Lake or river beach ${r0(t.beachKm)} km away`;
+    case 'altitude':
+      return good ? `High up, at ${r0(t.elev)} m` : `Low-lying, ${r0(t.elev)} m`;
+    case 'flat':
+      return t.relief25km == null ? null : good ? 'Flat, open country' : 'Hilly surroundings';
     case 'events': {
-      const ev = eventsNear(t);
+      const months = c.months ?? [];
+      const all = eventsNear(t);
+      // On a visit, name what is on while you are there.
+      const ev = months.length ? all.filter((e) => onDuring(e.event, months)) : all;
+      if (months.length && !ev.length) return all.length ? `Festivals nearby, none in ${monthLabel(months)}` : 'No big festivals nearby';
       if (!ev.length) return 'No big festivals nearby';
+      if (months.length) {
+        const names = ev.slice(0, 2).map((e) => e.event.name).join(', ');
+        return `${names} on in ${monthLabel(months)}`;
+      }
       const names = ev.slice(0, 2).map((e) => e.event.name).join(', ');
       return ev.length > 2 ? `${names} +${ev.length - 2} more` : names;
     }

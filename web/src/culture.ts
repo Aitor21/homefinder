@@ -513,13 +513,21 @@ export function eventsNear(t: Pick<Town, 'lat' | 'lon'> & object, radiusKm = EVE
  * recurring events listed here are within reach, which is a real if partial
  * fact, and the town panel says the list is the big ones only.
  */
-export function eventsScore(t: Town): number {
+export function eventsScore(t: Town, months: readonly number[] = []): number {
   let sum = 0;
   for (const { event, km } of eventsNear(t)) {
     const near = km <= EVENT_NEAR_KM ? 1 : Math.max(0, 1 - (km - EVENT_NEAR_KM) / (EVENT_RADIUS_KM - EVENT_NEAR_KM));
-    sum += SCALE_WEIGHT[event.scale] * near;
+    // On a visit, a festival held while you are there is the point; one held
+    // in another season still says something about the place, but little.
+    const timing = months.length ? (onDuring(event, months) ? 1 : 0.15) : 1;
+    sum += SCALE_WEIGHT[event.scale] * near * timing;
   }
   return 1 - Math.exp(-sum);
+}
+
+/** Whether an event runs in any of these months. */
+export function onDuring(e: CulturalEvent, months: readonly number[]): boolean {
+  return e.months.some((m) => months.includes(m));
 }
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));

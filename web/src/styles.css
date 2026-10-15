@@ -745,6 +745,7 @@ td.whytd { text-align: left; }
 }
 .tabs button.on { background: var(--panel); color: var(--ink); font-weight: 650; box-shadow: 0 1px 2px rgba(0, 0, 0, .08); }
 .dlinks { margin: 10px 0 0; }
+.detail h4.buyhead { margin-top: 26px; padding-top: 14px; border-top: 1px solid var(--line); }
 
 .schart { display: flex; flex-direction: column; gap: 5px; }
 .srow { display: grid; grid-template-columns: 1fr 44px 92px 26px; gap: 8px; align-items: center; font-size: 11.5px; }
@@ -774,6 +775,24 @@ td.whytd { text-align: left; }
   border: 2px solid rgba(0, 0, 0, .2); background: #fff; color: var(--ink); background-clip: padding-box;
 }
 .fitbtn:hover { background: #f4f4f4; }
+
+/* ===================================================== intents, months, groups */
+
+.months { display: grid; grid-template-columns: repeat(6, 1fr); gap: 5px; margin: 0 0 14px; }
+.months button {
+  font: inherit; font-size: 12.5px; padding: 8px 0; border-radius: 8px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--panel); color: var(--ink-2);
+}
+.months button.on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 650; }
+.months.compact { grid-template-columns: repeat(6, 1fr); gap: 3px; margin-bottom: 4px; }
+.months.compact button { font-size: 11px; padding: 4px 0; }
+.tilegroup {
+  font-size: 11px; text-transform: uppercase; letter-spacing: .07em; color: var(--ink-3);
+  margin: 14px 0 7px; font-weight: 650;
+}
+.tilegroup:first-of-type { margin-top: 0; }
+.schip.intent { background: #1a1d21; color: #fff; border-color: #1a1d21; font-weight: 600; padding-right: 10px; }
+.hlchip.on { background: #fde9f0; color: #a8325a; font-weight: 600; }
 
 /* Hidden on desktop, where the sidebar is always visible and the header has
    room for everything. */

@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react';
 import type { Town } from '../types';
 import { hubDriveMin } from '../scoring';
 import { formatDrive } from '../travel';
+import { monthLabel, rainIn, weatherHigh } from '../climate';
 import {
   cultureScore, eventsNear, EVENT_KIND_ICON, MONTH_SHORT, venuesSurveyed,
 } from '../culture';
@@ -63,9 +64,13 @@ export interface Highlight {
  * towns side by side read differently: a sea town leads with the sea, a
  * mountain town with the mountains, a festival city with its festivals.
  */
-export function highlights(t: Town, max = 6): Highlight[] {
+export function highlights(t: Town, max = 6, months: readonly number[] = []): Highlight[] {
   const out: Highlight[] = [];
-  out.push({
+  out.push(months.length ? {
+    icon: '☀️',
+    text: `${Math.round(weatherHigh(t, months))}° in ${monthLabel(months)}`,
+    title: `Mean daily high during your visit; ${Math.round(rainIn(t, months) ?? 0)} mm of rain a month`,
+  } : {
     icon: '☀️',
     text: `${Math.round(t.hottestTmax)}° summer highs`,
     title: `Mean daily high of the hottest month (${MONTH_SHORT[t.hottestMonth] ?? ''}); winter nights ${Math.round(t.winterTmin)}°`,
@@ -101,10 +106,10 @@ export function highlights(t: Town, max = 6): Highlight[] {
   return out.slice(0, max);
 }
 
-export function Highlights({ town, max }: { town: Town; max?: number }) {
+export function Highlights({ town, max, months }: { town: Town; max?: number; months?: readonly number[] }) {
   return (
     <div className="hl">
-      {highlights(town, max).map((h, i) => (
+      {highlights(town, max, months).map((h, i) => (
         <span key={i} className="hlchip" title={h.title}>
           <span aria-hidden>{h.icon}</span> {h.text}
         </span>

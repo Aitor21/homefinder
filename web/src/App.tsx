@@ -26,7 +26,7 @@ import Onboarding from './ui/Onboarding';
 import TasteDeck from './ui/TasteDeck';
 import { SearchSummary } from './ui/QuickControls';
 import { useMedia } from './ui/bits';
-import { describeSearch, type QuickAnswers, type Search } from './quickstart';
+import { describeSearch, quickBase, type QuickAnswers, type Search } from './quickstart';
 import { EVENTS } from './culture';
 import { typicalOf, type ExplainCtx } from './explain';
 
@@ -95,8 +95,11 @@ function loadWorkTz(): string | null {
 export default function App() {
   const [data, setData] = useState<Dataset | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
-  const [weights, setWeights] = useState<Weights>(DEFAULT_WEIGHTS);
+  // A new visitor starts from living somewhere, not buying. DEFAULT_FILTERS
+  // is still the base a saved search is merged over, so a search saved before
+  // intents existed comes back as the purchase search it was.
+  const [filters, setFilters] = useState<Filters>(() => quickBase().filters);
+  const [weights, setWeights] = useState<Weights>(() => quickBase().weights);
   const [mode, setMode] = useState<Mode>('score');
   const [selected, setSelected] = useState<string | null>(null);
   const [compareIne, setCompareIne] = useState<string | null>(null);
@@ -257,8 +260,9 @@ export default function App() {
   const explainCtx = useMemo<ExplainCtx>(
     () => ({
       weights, typical, budget: filters.budget, summerTarget: filters.summerTarget, homeIndex, homeName,
+      buying: filters.buying, months: filters.months,
     }),
-    [weights, typical, filters.budget, filters.summerTarget, homeIndex, homeName],
+    [weights, typical, filters.budget, filters.summerTarget, homeIndex, homeName, filters.buying, filters.months],
   );
 
   const sel = useMemo<Ranked | null>(() => {

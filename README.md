@@ -13,6 +13,59 @@ whether you may legally buy there, and whether you may legally live there. Then
 it hands you a pre-filtered link into a property portal for the ones worth a
 look.
 
+## Living somewhere, not only buying
+
+The tool began as a purchase screener, and most people looking for somewhere
+new are not buying. They will rent, work from a laptop, retire, or want to know
+where to spend October. So the first question is now **what brings you here**,
+and only one of the six answers is about buying:
+
+| Intent | What it changes |
+|---|---|
+| Move & live | The neutral default: weather, landscape, things to do, costs, connections |
+| Work remotely | Broadband weighted heavily and 50 Mbps required; living costs up |
+| Rent for a while | Housing costs, everyday costs and local services weighted up |
+| Travel & visit | You pick the months; weather, rain and festivals are judged for then |
+| Retire | Mild winters, health care and services, safety, living costs |
+| Buy a home | Turns on the purchase budget, the minimum size and "can a foreigner buy here" |
+
+**Buying is a filter you switch on, not the premise.** Off, nothing is excluded
+on price. Housing costs are still *ranked* (cheaper scores higher), because rents
+track purchase prices closely enough to sort by, and every country is shown,
+including those where a foreigner cannot buy. *I want to buy* in the panel turns
+the budget, the size and the ownership rule back on. Saved searches from before
+intents existed come back as the purchase searches they were.
+
+**Travel is judged on your dates.** Weather is the mean daily high over the
+months you pick rather than the hottest month of the year; rain is the rain in
+those months; festivals held while you are there count fully and others count
+for little. Living constraints that mean nothing on a visit are relaxed: a
+resort island 200 km from the nearest city is fine, and a week of hazy air is
+not a year of it. Pick October and November with warm weather, beaches and
+culture and the top of the list is Bali; Bali's wetter coast is marked down for
+its 156 mm a month while the drier north is called out as mostly dry.
+
+**Landscape is its own question.** Coast, mountains, lakes and rivers,
+highlands, forests and parks, flat open country. Three of those are new
+dimensions:
+- *Lakes and rivers* scores inland towns by their nearest mapped lake or river
+  beach. Coastal towns are left out of it rather than scored, because the map
+  does not tell a sea beach from a lake beach.
+- *Altitude* runs from 200 m to 1,400 m.
+- *Flat country* is the inverse of relief within 25 km.
+
+For anyone not buying, the town panel's *Housing* tab leads with the price level
+and with searches for long-term rentals, coworking and a Wikivoyage guide.
+These are searches rather than constructed links, for the same reason the
+portal links outside Spain are. The purchase details sit underneath under *If
+you wanted to buy*.
+
+**A hidden cap on the tropics, removed.** The "wide open" defaults allowed at
+most 200 days over 30 °C and 200 warm nights a year. That sounds generous and
+is not: the tropics run from 250 to 365, so every search had been silently
+leaving out Phuket, Bangkok, Salvador, Cancún and Darwin. The default is now no
+limit.
+
 ## Four taps to a ranked list
 
 The first visit used to open on a questionnaire that asked you to grade cities
@@ -21,6 +74,8 @@ result. It is precise, and for someone arriving cold it is a wall. Now the
 first visit asks four things anyone can answer without thinking, each with one
 tap on a tile:
 
+0. **What brings you here?** Move, work remotely, rent, travel, retire or buy
+   (see above). Travellers also pick their months.
 1. **Where would you consider?** Anywhere, Europe, wherever an EU passport is
    enough, or only your own country.
 2. **What summer?** Fresh, mild, warm or hot, each with real places you have
@@ -30,7 +85,7 @@ tap on a tile:
    mountains, nature, museums and theatre, festivals and live music, big-city
    buzz or a quiet small town, sunshine, mild winters, skiing, low cost of
    living, remote work, car-free life, flying often, a dog, safety.
-4. **Roughly what can you spend?** Four budgets and three sizes.
+4. **Roughly what can you spend?** Buyers only: four budgets and three sizes.
 
 A live count shows how many places are still in play at every step, and the
 results come straight after. Single-choice screens move on by themselves: a
@@ -1099,5 +1154,5 @@ web/               Vite + React + TypeScript + Leaflet
 
 `npm test` covers the scoring model, the filters, near misses, clocks and
 daylight, the gem regression, the questionnaire, the quick start, culture and
-events, the reasons, areas and duplicate merging, and the listing parsers:
-183 tests, no I/O.
+events, the reasons, areas, duplicate merging, intents and travel months, and
+the listing parsers: 195 tests, no I/O.

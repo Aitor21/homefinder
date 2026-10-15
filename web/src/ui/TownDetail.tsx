@@ -24,6 +24,23 @@ import {
   venuesSurveyed,
 } from '../culture';
 import { flag } from '../quickstart';
+import { monthLabel, rainIn, weatherHigh, weatherLow } from '../climate';
+import { onDuring } from '../culture';
+
+/**
+ * Searches rather than constructed deep links, for the same reason the
+ * portal links outside Spain are searches: a guessed path that 404s is worse
+ * than one more click. Wikivoyage's own search lands on the article when the
+ * name matches one.
+ */
+function lookups(t: Town) {
+  const q = (s: string) => encodeURIComponent(s);
+  return {
+    rent: `https://www.google.com/search?q=${q(`long term rentals ${t.name} ${t.countryName}`)}`,
+    cowork: `https://www.google.com/search?q=${q(`coworking ${t.name} ${t.countryName}`)}`,
+    guide: `https://en.wikivoyage.org/w/index.php?search=${q(t.name)}`,
+  };
+}
 import { reasons, type ExplainCtx } from '../explain';
 import type { Weights } from '../types';
 import { useState } from 'react';
@@ -34,7 +51,7 @@ const TABS: Array<[Tab, string]> = [
   ['overview', 'Overview'],
   ['climate', 'Climate'],
   ['living', 'Living'],
-  ['buying', 'Buying'],
+  ['buying', 'Housing'],
 ];
 
 interface Props {
@@ -169,6 +186,8 @@ export default function TownDetail({
   const events = eventsNear(t);
   const venues = venuesSurveyed(t);
   const why = reasons(ranked, explain, 5, 3);
+  const look = lookups(t);
+  const visit = filters.months;
 
   return (
     <>
@@ -189,7 +208,7 @@ export default function TownDetail({
         </button>
       </div>
 
-      <Highlights town={t} max={8} />
+      <Highlights town={t} max={8} months={visit} />
       <div className="dactions">
         <button
           className={isFavourite ? 'likebtn on' : 'likebtn'}
@@ -198,9 +217,19 @@ export default function TownDetail({
         >
           {isFavourite ? '♥ You’d live here' : '♡ I’d live here'}
         </button>
-        {links[0] && (
-          <a className="chipbtn" href={links[0].url} target="_blank" rel="noreferrer">
-            Homes for sale {'→'}
+        {filters.buying ? (
+          links[0] && (
+            <a className="chipbtn" href={links[0].url} target="_blank" rel="noreferrer">
+              Homes for sale {'→'}
+            </a>
+          )
+        ) : filters.intent === 'travel' ? (
+          <a className="chipbtn" href={look.guide} target="_blank" rel="noreferrer">
+            Travel guide {'→'}
+          </a>
+        ) : (
+          <a className="chipbtn" href={look.rent} target="_blank" rel="noreferrer">
+            Rentals {'→'}
           </a>
         )}
       </div>
@@ -296,10 +325,13 @@ export default function TownDetail({
 
         {events.length > 0 && (
           <>
-            <h4>Nearby festivals</h4>
+            <h4>Nearby festivals{visit.length ? ` (highlighted: on in ${monthLabel(visit)})` : ''}</h4>
             <div className="hl">
-              {events.slice(0, 4).map(({ event: e, km: d }) => (
-                <span key={e.name + e.where} className="hlchip" title={`${e.where}, ${Math.round(d)} km`}>
+              {(visit.length
+                ? [...events].sort((a, b) => Number(onDuring(b.event, visit)) - Number(onDuring(a.event, visit)))
+                : events
+              ).slice(0, 4).map(({ event: e, km: d }) => (
+                <span key={e.name + e.where} className={visit.length && onDuring(e, visit) ? 'hlchip on' : 'hlchip'} title={`${e.where}, ${Math.round(d)} km`}>
                   <span aria-hidden>{EVENT_KIND_ICON[e.kind]}</span> {e.name} · {formatMonths(e.months)}
                 </span>
               ))}
@@ -328,6 +360,21 @@ export default function TownDetail({
 
       {tab === 'climate' && (
         <>
+        {visit.length > 0 && (
+          <>
+            <h4>While you are there, {monthLabel(visit)}</h4>
+            <div className="kv">
+              <span className="k">Daytime highs</span>
+              <span className="v">{weatherHigh(t, visit).toFixed(0)}°C</span>
+              <span className="k">Night-time lows</span>
+              <span className="v">{weatherLow(t, visit).toFixed(0)}°C</span>
+              <span className="k">Rain per month</span>
+              <span className="v">{Math.round(rainIn(t, visit) ?? 0)} mm</span>
+              <span className="k">Big festivals on then</span>
+              <span className="v">{events.filter((e) => onDuring(e.event, visit)).length}</span>
+            </div>
+          </>
+        )}
         <h4>Summer</h4>
         <div className="kv">
           <span className="k">Days above 30°C</span>
@@ -722,10 +769,12 @@ export default function TownDetail({
             {band ? `${n0(band[0])} to ${n0(band[1])}` : n0(t.eurM2)} €/m²{' '}
             <span className={`pill ${t.priceSource}`}>{t.priceSource}</span>
           </span>
+          {filters.buying && <>
           <span className="k">{filters.minM2} m² would cost</span>
           <span className="v">€{n0(priceFor(t, filters.minM2))}</span>
           <span className="k">Budget buys</span>
           <span className="v">{n0(affordableM2(t, filters.budget))} m²</span>
+          </>}
           {fair && (
             <>
               <span className="k">Modelled fair price</span>
@@ -765,6 +814,34 @@ export default function TownDetail({
             only covers towns above 25,000 inhabitants, so anything smaller is estimated from its
             province. Use it to shortlist, then check the real figure through the links below.
           </div>
+        )}
+
+        {!filters.buying && (
+          <>
+        <h4>{filters.buying ? 'Rent, work & explore' : 'Find a place to stay'}</h4>
+        <div className="links">
+          <a href={look.rent} target="_blank" rel="noreferrer">
+            <span>Long-term rentals in {t.name}</span>
+            <small>web search</small>
+          </a>
+          <a href={look.cowork} target="_blank" rel="noreferrer">
+            <span>Coworking spaces</span>
+            <small>web search</small>
+          </a>
+          <a href={look.guide} target="_blank" rel="noreferrer">
+            <span>Travel guide</span>
+            <small>Wikivoyage</small>
+          </a>
+        </div>
+        {!filters.buying && (
+          <div className="note">
+            Rents are not in the dataset, but they track purchase prices closely, so the
+            price level above is what the <b>Housing costs</b> score ranks on. Outside Spain it
+            is a national band: read it as cheap, middling or dear for the country, not as a rent.
+          </div>
+        )}
+            <h4 className="buyhead">If you wanted to buy</h4>
+          </>
         )}
 
         {builders.length > 0 && (
@@ -833,6 +910,32 @@ export default function TownDetail({
             ? 'The first three links carry your budget and size straight through. They are built from the town and province name, which matches the portals’ own convention almost always; if one lands on a 404, use the plain search link.'
             : `These open the main property portals for ${t.countryName} with this town’s name as the search. Your budget and size do not carry through outside Spain, so set them again there.`}
         </div>
+        {filters.buying && (
+          <>
+        <h4>{filters.buying ? 'Rent, work & explore' : 'Find a place to stay'}</h4>
+        <div className="links">
+          <a href={look.rent} target="_blank" rel="noreferrer">
+            <span>Long-term rentals in {t.name}</span>
+            <small>web search</small>
+          </a>
+          <a href={look.cowork} target="_blank" rel="noreferrer">
+            <span>Coworking spaces</span>
+            <small>web search</small>
+          </a>
+          <a href={look.guide} target="_blank" rel="noreferrer">
+            <span>Travel guide</span>
+            <small>Wikivoyage</small>
+          </a>
+        </div>
+        {!filters.buying && (
+          <div className="note">
+            Rents are not in the dataset, but they track purchase prices closely, so the
+            price level above is what the <b>Housing costs</b> score ranks on. Outside Spain it
+            is a national band: read it as cheap, middling or dear for the country, not as a rent.
+          </div>
+        )}
+          </>
+        )}
         </>
       )}
     </>

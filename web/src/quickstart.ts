@@ -21,7 +21,8 @@
  * a slider by hand can never leave a tile claiming something that is no longer
  * true.
  */
-import type { Filters, Town, Weights } from './types';
+import type { Filters, Intent, Ownership, Town, Weights } from './types';
+import { monthLabel, weatherHigh } from './climate';
 import { DEFAULT_FILTERS, DEFAULT_WEIGHTS, POP_ANY } from './types';
 import { FREE_MOVEMENT } from './home';
 import { resolveReferences } from './profile';
@@ -29,6 +30,116 @@ import { resolveReferences } from './profile';
 export interface Search {
   filters: Filters;
   weights: Weights;
+}
+
+// ----------------------------------------------------------------- intent
+
+export interface IntentOption {
+  key: Intent;
+  icon: string;
+  label: string;
+  hint: string;
+  /** Weights this intent sets. Kept at 6 or under where a tile also uses the
+   *  dimension, so a tile lights only when the person picked it. */
+  weights: Partial<Weights>;
+  filters: Partial<Filters>;
+}
+
+const ALL_TIERS: Ownership[] = ['freehold', 'restricted', 'leasehold', 'prohibited'];
+const BUYABLE: Ownership[] = ['freehold', 'restricted', 'leasehold'];
+
+/**
+ * Why someone is here. The tool began as a purchase screener, but most people
+ * looking for somewhere new are not buying: they will rent, work from a laptop,
+ * retire, or want to know where to spend October. Only "Buy a home" switches
+ * on the purchase budget and the question of whether a foreigner may buy;
+ * everyone else gets every country, ranked on living there.
+ */
+export const INTENTS: IntentOption[] = [
+  {
+    key: 'live', icon: '🏡', label: 'Move & live', hint: 'Find a new place to call home',
+    weights: {}, filters: {},
+  },
+  {
+    key: 'nomad', icon: '💻', label: 'Work remotely', hint: 'Fast internet, flights out, sensible costs',
+    weights: { internet: 9, livingCost: 6, affordability: 5, culture: 4 },
+    filters: { minNetMbps: 50 },
+  },
+  {
+    key: 'rent', icon: '🔑', label: 'Rent for a while', hint: 'Affordable housing and everyday services',
+    weights: { affordability: 8, livingCost: 6, amenities: 6 },
+    filters: {},
+  },
+  {
+    key: 'travel', icon: '🧳', label: 'Travel & visit', hint: 'Great weather and things to do when you go',
+    weights: {
+      culture: 6, events: 6, internet: 0, affordability: 1, livingCost: 3, energyBill: 0,
+      amenities: 3, winterMild: 0, cleanAir: 3, safety: 6,
+      // Rain on your dates, not over the year: a wet fortnight ruins a trip.
+      drier: 5,
+    },
+    // Living constraints that mean nothing on a visit: a resort island two
+    // hundred km from the nearest city is the point, not a problem, and a
+    // week of hazy air is not a year of it.
+    filters: { minNetMbps: 0, maxCityKm: 400, maxPm25: 40 },
+  },
+  {
+    key: 'retire', icon: '🌅', label: 'Retire', hint: 'Mild winters, health care, calm and safe',
+    weights: { winterMild: 6, amenities: 6, safety: 6, livingCost: 6, internet: 3, city: 4 },
+    filters: {},
+  },
+  {
+    key: 'buy', icon: '🏠', label: 'Buy a home', hint: 'Where your budget buys the space you need',
+    weights: { affordability: 8 },
+    filters: {},
+  },
+];
+
+export function intentOf(key: Intent): IntentOption {
+  return INTENTS.find((i) => i.key === key) ?? INTENTS[0];
+}
+
+/** The month after this one: the natural default for "when are you going?". */
+export function nextMonth(now = new Date()): number {
+  return (now.getMonth() + 1) % 12;
+}
+
+/**
+ * Switch intent: undo the previous intent's weights, apply the new one's.
+ * Buying turns the budget and the ownership rule on; anything else turns them
+ * off and opens every country. Travel brings months; anything else drops them.
+ */
+export function applyIntent(s: Search, key: Intent): Search {
+  const prev = intentOf(s.filters.intent);
+  const next = intentOf(key);
+  const weights = { ...s.weights };
+  for (const k of Object.keys(prev.weights) as Array<keyof Weights>) weights[k] = DEFAULT_WEIGHTS[k];
+  Object.assign(weights, next.weights);
+  const buying = key === 'buy';
+  // Undo what the previous intent set before applying the new one.
+  const base = quickBase().filters;
+  const undone: Partial<Filters> = {};
+  for (const k of Object.keys(prev.filters) as Array<keyof Filters>) {
+    (undone as Record<string, unknown>)[k] = base[k];
+  }
+  const filters: Filters = {
+    ...s.filters,
+    ...undone,
+    ...next.filters,
+    intent: key,
+    buying,
+    ownership: buying ? BUYABLE : ALL_TIERS,
+    months: key === 'travel' ? (s.filters.months.length ? s.filters.months : [nextMonth()]) : [],
+  };
+  return { filters, weights };
+}
+
+/** Turn the purchase budget on or off without changing anything else. */
+export function setBuying(s: Search, on: boolean): Search {
+  return {
+    ...s,
+    filters: { ...s.filters, buying: on, ownership: on ? BUYABLE : ALL_TIERS },
+  };
 }
 
 // ------------------------------------------------------------------ where
@@ -109,8 +220,17 @@ export const SUMMERS: SummerOption[] = [
   { key: 'mild', icon: '🌤️', label: 'Mild', hint: 'Highs around 26 °C. Warm days, cool nights', target: 26, min: 23, max: 28.5 },
   { key: 'warm', icon: '☀️', label: 'Warm', hint: 'Highs around 30 °C. Proper beach summers', target: 30, min: 27.5, max: 32.5 },
   { key: 'hot', icon: '🔥', label: 'Hot', hint: 'Highs of 32 °C and up. The more sun the better', target: 34, min: 31.5, max: 50 },
-  { key: 'any', icon: '🤷', label: 'No preference', hint: 'Do not rank on summer at all', target: null, min: 0, max: 50 },
+  { key: 'any', icon: '🤷', label: 'No preference', hint: 'Do not rank on weather at all', target: null, min: 0, max: 50 },
 ];
+
+/** The same tiles, worded for a visit: the weather while you are there. */
+export const TRAVEL_HINT: Record<Summer, string> = {
+  fresh: 'Highs up to about 24 °C. Walking weather',
+  mild: 'Highs around 26 °C. T-shirt days, jacket evenings',
+  warm: 'Highs around 30 °C. Beach and terrace weather',
+  hot: 'Highs of 32 °C and up. Proper heat',
+  any: 'Do not rank on weather at all',
+};
 
 export function applySummer(f: Filters, key: Summer): Filters {
   const s = SUMMERS.find((x) => x.key === key)!;
@@ -141,7 +261,7 @@ export function summerOf(f: Filters): Summer | null {
  * Drawn from the largest towns in the band, one per country.
  */
 export function summerExamples(
-  towns: Town[], key: Summer, home: string | null, n = 3,
+  towns: Town[], key: Summer, home: string | null, n = 3, months: readonly number[] = [],
 ): string[] {
   const s = SUMMERS.find((x) => x.key === key);
   if (!s || s.target == null) return [];
@@ -152,7 +272,7 @@ export function summerExamples(
   const continent = homeTown?.continent ?? 'Europe';
   const fits = resolveReferences(towns, home)
     .map((r, order) => ({ label: r.label, town: byId.get(r.id)!, order }))
-    .filter((r) => r.town && Math.abs(r.town.hottestTmax - s.target!) <= 1.5);
+    .filter((r) => r.town && Math.abs(weatherHigh(r.town, months) - s.target!) <= 1.5);
   // Home country first, then home continent, then the world.
   const rankOf = (t: Town) => (t.country === home ? 0 : t.continent === continent ? 1 : 2);
   fits.sort((a, b) => rankOf(a.town) - rankOf(b.town) || a.order - b.order);
@@ -170,11 +290,16 @@ export function summerExamples(
 // ------------------------------------------------------------------ vibes
 
 export type Vibe =
-  | 'beach' | 'mountains' | 'nature' | 'culture' | 'festivals' | 'city' | 'quiet'
+  | 'beach' | 'mountains' | 'nature' | 'lakes' | 'highlands' | 'flat'
+  | 'culture' | 'festivals' | 'city' | 'quiet'
   | 'sun' | 'mildWinter' | 'ski' | 'cheap' | 'remote' | 'carfree' | 'fly' | 'dog' | 'safe';
+
+/** Landscape is what a place looks like; life is what you do there. */
+export type VibeGroup = 'landscape' | 'life';
 
 export interface VibeOption {
   key: Vibe;
+  group: VibeGroup;
   icon: string;
   label: string;
   hint: string;
@@ -192,9 +317,10 @@ const D = DEFAULT_WEIGHTS;
 function weighted(
   key: Vibe, icon: string, label: string, hint: string,
   dims: Array<keyof Weights>, extra?: { on?: Partial<Filters>; off?: Partial<Filters> },
+  group: VibeGroup = 'life',
 ): VibeOption {
   return {
-    key, icon, label, hint,
+    key, group, icon, label, hint,
     on: ({ filters, weights }) => {
       const w = { ...weights };
       for (const d of dims) w[d] = Math.max(w[d], BOOST);
@@ -216,13 +342,18 @@ const CITY_POP = 100_000;
 const QUIET_POP = 30_000;
 
 export const VIBES: VibeOption[] = [
-  weighted('beach', '🏖️', 'Beach & sea', 'Close to the coast', ['coast']),
-  weighted('mountains', '⛰️', 'Mountains', 'Real relief on the horizon', ['mountains']),
-  weighted('nature', '🌲', 'Nature & hiking', 'National parks and reserves nearby', ['nature']),
+  // --- landscape
+  weighted('beach', '🏖️', 'Coast & beaches', 'Close to the sea', ['coast'], undefined, 'landscape'),
+  weighted('mountains', '⛰️', 'Mountains', 'Real relief on the horizon', ['mountains'], undefined, 'landscape'),
+  weighted('lakes', '🏞️', 'Lakes & rivers', 'Swimmable water inland', ['water'], undefined, 'landscape'),
+  weighted('highlands', '🏔️', 'Highlands', 'Up high: fresher air, cooler nights', ['altitude'], undefined, 'landscape'),
+  weighted('nature', '🌲', 'Forests & parks', 'National parks and reserves to walk in', ['nature'], undefined, 'landscape'),
+  weighted('flat', '🌾', 'Flat, open country', 'Easy walking and cycling, big skies', ['flat'], undefined, 'landscape'),
+  // --- what you do there
   weighted('culture', '🎭', 'Museums & theatre', 'Culture within an evening’s reach', ['culture']),
   weighted('festivals', '🎶', 'Festivals & live music', 'Big recurring festivals and fiestas nearby', ['events']),
   {
-    key: 'city', icon: '🏙️', label: 'Big-city buzz', hint: 'A city of 100,000 or more',
+    key: 'city', group: 'life', icon: '🏙️', label: 'Big-city buzz', hint: 'A city of 100,000 or more',
     on: ({ filters, weights }) => ({
       filters: { ...filters, minPop: Math.max(filters.minPop, CITY_POP), maxPop: POP_ANY },
       weights: { ...weights, city: Math.max(weights.city, BOOST), culture: Math.max(weights.culture, 5) },
@@ -234,7 +365,7 @@ export const VIBES: VibeOption[] = [
     isOn: ({ filters }) => filters.minPop >= CITY_POP,
   },
   {
-    key: 'quiet', icon: '🏡', label: 'Quiet small town', hint: 'Under 30,000 people',
+    key: 'quiet', group: 'life', icon: '🏡', label: 'Quiet small town', hint: 'Under 30,000 people',
     on: ({ filters, weights }) => ({
       filters: { ...filters, maxPop: QUIET_POP, minPop: Math.min(filters.minPop, DEFAULT_FILTERS.minPop) },
       weights: { ...weights, amenities: Math.max(weights.amenities, 6) },
@@ -252,7 +383,7 @@ export const VIBES: VibeOption[] = [
   weighted('remote', '💻', 'Remote work', 'Fast broadband, a sane time zone', ['internet'],
     { on: { minNetMbps: 50 }, off: { minNetMbps: DEFAULT_FILTERS.minNetMbps } }),
   {
-    key: 'carfree', icon: '🚆', label: 'Car-free life', hint: 'A station or tram within 3 km',
+    key: 'carfree', group: 'life', icon: '🚆', label: 'Car-free life', hint: 'A station or tram within 3 km',
     on: ({ filters, weights }) => ({
       filters: { ...filters, maxTransitKm: 3 },
       weights: { ...weights, amenities: Math.max(weights.amenities, 7) },
@@ -273,13 +404,17 @@ export function vibe(key: Vibe): VibeOption {
   return VIBES.find((v) => v.key === key)!;
 }
 
+/** Pairs that contradict each other: picking one drops the other. */
+const OPPOSITE: Partial<Record<Vibe, Vibe>> = {
+  city: 'quiet', quiet: 'city', mountains: 'flat', flat: 'mountains',
+};
+
 export function toggleVibe(s: Search, key: Vibe): Search {
   const v = vibe(key);
   if (v.isOn(s)) return v.off(s);
-  // City and quiet contradict each other: picking one drops the other.
   let next = s;
-  if (key === 'city' && vibe('quiet').isOn(next)) next = vibe('quiet').off(next);
-  if (key === 'quiet' && vibe('city').isOn(next)) next = vibe('city').off(next);
+  const other = OPPOSITE[key];
+  if (other && vibe(other).isOn(next)) next = vibe(other).off(next);
   return v.on(next);
 }
 
@@ -305,6 +440,9 @@ export const SIZES = [
 // ---------------------------------------------------------------- profile
 
 export interface QuickAnswers {
+  intent: Intent;
+  /** Months of a visit; only used when travelling. */
+  months: number[];
   where: Where;
   summer: Summer;
   vibes: Vibe[];
@@ -313,6 +451,8 @@ export interface QuickAnswers {
 }
 
 export const DEFAULT_QUICK: QuickAnswers = {
+  intent: 'live',
+  months: [],
   where: 'world',
   summer: 'any',
   vibes: [],
@@ -331,16 +471,29 @@ export const DEFAULT_QUICK: QuickAnswers = {
  */
 export function quickBase(): Search {
   return {
-    filters: { ...DEFAULT_FILTERS, maxAirportMin: 120, maxHubMin: 150, maxCityKm: 150 },
+    filters: {
+      ...DEFAULT_FILTERS,
+      // Living somewhere, not buying: no purchase budget and every country,
+      // including the ones a foreigner cannot buy in.
+      intent: 'live',
+      buying: false,
+      ownership: ALL_TIERS,
+      maxAirportMin: 120,
+      maxHubMin: 150,
+      maxCityKm: 150,
+    },
     weights: { ...DEFAULT_WEIGHTS },
   };
 }
 
 export function buildQuickSearch(a: QuickAnswers, home: string | null): Search {
-  let s = quickBase();
+  let s = applyIntent(quickBase(), a.intent ?? 'live');
+  if (s.filters.intent === 'travel' && a.months?.length) {
+    s = { ...s, filters: { ...s.filters, months: [...a.months] } };
+  }
   s = { ...s, filters: applyWhere(s.filters, a.where, home) };
   s = { ...s, filters: applySummer(s.filters, a.summer) };
-  for (const v of a.vibes) s = toggleVibe(s, v);
+  for (const v of a.vibes) if (!vibe(v)?.isOn(s)) s = toggleVibe(s, v);
   s = { ...s, filters: { ...s.filters, budget: a.budget, minM2: a.minM2 } };
   return s;
 }
@@ -348,21 +501,27 @@ export function buildQuickSearch(a: QuickAnswers, home: string | null): Search {
 /** Plain-English account of a quick search, for the "Your profile" notes. */
 export function describeSearch(s: Search, home: string | null, homeName: string | null): string[] {
   const out: string[] = [];
-  const w = whereOf(s.filters, home);
+  const f = s.filters;
+  const intent = intentOf(f.intent);
+  out.push(`${intent.label}: ${intent.hint.toLowerCase()}.`);
+  const w = whereOf(f, home);
   const where = w ? whereOptions(homeName, home).find((o) => o.key === w) : null;
   if (where && w !== 'world') out.push(`${where.label}: ${where.hint.toLowerCase()}.`);
-  const su = summerOf(s.filters);
+  const su = summerOf(f);
   const so = su ? SUMMERS.find((x) => x.key === su) : null;
   if (so && so.target != null) {
+    const when = f.months.length ? `daytime highs in ${monthLabel(f.months)}` : 'hottest-month highs';
     out.push(
-      `${so.label} summers: hottest-month highs between ${so.min || 'any'} and ${so.max >= 50 ? 'any' : so.max} °C, ` +
+      `${so.label} weather: ${when} between ${so.min || 'any'} and ${so.max >= 50 ? 'any' : so.max} °C, ` +
         `ranked by closeness to ${so.target} °C in either direction.`,
     );
   }
   const vibes = activeVibes(s).map((k) => vibe(k).label.toLowerCase());
   if (vibes.length) out.push(`Weighted up: ${vibes.join(', ')}.`);
   out.push(
-    `Budget €${Math.round(s.filters.budget / 1000)}k for at least ${s.filters.minM2} m².`,
+    f.buying
+      ? `Buying: budget €${Math.round(f.budget / 1000)}k for at least ${f.minM2} m².`
+      : 'No purchase budget: housing costs are ranked, not filtered. Turn on "I want to buy" to set one.',
   );
   return out;
 }
@@ -384,6 +543,14 @@ export interface SummaryChip {
  */
 export function summaryChips(s: Search, home: string | null, homeName: string | null): SummaryChip[] {
   const out: SummaryChip[] = [];
+  const intent = intentOf(s.filters.intent);
+  out.push({ key: 'intent', icon: intent.icon, label: intent.label });
+  if (s.filters.months.length) {
+    out.push({
+      key: 'months', icon: '📅', label: monthLabel(s.filters.months),
+      remove: (x) => ({ ...x, filters: { ...x.filters, months: [] } }),
+    });
+  }
   const w = whereOf(s.filters, home);
   if (w && w !== 'world') {
     const o = whereOptions(homeName, home).find((x) => x.key === w)!;
@@ -405,7 +572,7 @@ export function summaryChips(s: Search, home: string | null, homeName: string | 
   if (su && su !== 'any') {
     const o = SUMMERS.find((x) => x.key === su)!;
     out.push({
-      key: 'summer', icon: o.icon, label: `${o.label} summers`,
+      key: 'summer', icon: o.icon, label: s.filters.months.length ? `${o.label} weather` : `${o.label} summers`,
       remove: (x) => ({ ...x, filters: applySummer(x.filters, 'any') }),
     });
   } else if (!su && s.filters.summerTarget != null) {
@@ -418,10 +585,13 @@ export function summaryChips(s: Search, home: string | null, homeName: string | 
     const v = vibe(k);
     out.push({ key: k, icon: v.icon, label: v.label, remove: (x) => v.off(x) });
   }
-  out.push({
-    key: 'budget', icon: '🏠',
-    label: `≤ €${Math.round(s.filters.budget / 1000)}k · ${s.filters.minM2} m²`,
-  });
+  if (s.filters.buying) {
+    out.push({
+      key: 'budget', icon: '💶',
+      label: `≤ €${Math.round(s.filters.budget / 1000)}k · ${s.filters.minM2} m²`,
+      remove: (x) => setBuying(x, false),
+    });
+  }
   if (s.filters.favourites.length) {
     out.push({
       key: 'likes', icon: '♥', label: `${s.filters.favourites.length} liked`,

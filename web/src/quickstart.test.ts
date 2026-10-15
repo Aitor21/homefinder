@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  activeVibes, applySummer, applyWhere, buildQuickSearch, DEFAULT_QUICK, flag, quickBase,
+  activeVibes, applyIntent, applySummer, applyWhere, buildQuickSearch, DEFAULT_QUICK, flag, quickBase,
   summaryChips, summerOf, tasteSample, toggleVibe, vibe, VIBES, whereOf,
 } from './quickstart';
 import { DEFAULT_FILTERS, DEFAULT_WEIGHTS, POP_ANY } from './types';
@@ -81,10 +81,10 @@ describe('quick search', () => {
 
   it('summarises itself as removable chips', () => {
     const s = buildQuickSearch(
-      { where: 'europe', summer: 'mild', vibes: ['beach'], budget: 300_000, minM2: 80 }, null,
+      { intent: 'buy', months: [], where: 'europe', summer: 'mild', vibes: ['beach'], budget: 300_000, minM2: 80 }, null,
     );
     const chips = summaryChips(s, null, null);
-    expect(chips.map((c) => c.key)).toEqual(['where', 'summer', 'beach', 'budget']);
+    expect(chips.map((c) => c.key)).toEqual(['intent', 'where', 'summer', 'beach', 'budget']);
     const noBeach = chips.find((c) => c.key === 'beach')!.remove!(s);
     expect(vibe('beach').isOn(noBeach)).toBe(false);
     const anywhere = chips.find((c) => c.key === 'where')!.remove!(s);
@@ -115,4 +115,55 @@ describe('taste sample', () => {
 it('draws flags from country codes', () => {
   expect(flag('ES')).toBe('🇪🇸');
   expect(flag('nope')).toBe('');
+});
+
+describe('intents', () => {
+  it('starts new visitors on living somewhere: no purchase budget, every country', () => {
+    const s = buildQuickSearch(DEFAULT_QUICK, null);
+    expect(s.filters.intent).toBe('live');
+    expect(s.filters.buying).toBe(false);
+    expect(s.filters.ownership).toContain('prohibited');
+    expect(summaryChips(s, null, null).some((c) => c.key === 'budget')).toBe(false);
+  });
+
+  it('only "buy" switches the budget and the ownership rule on', () => {
+    const buy = applyIntent(quickBase(), 'buy');
+    expect(buy.filters.buying).toBe(true);
+    expect(buy.filters.ownership).not.toContain('prohibited');
+    const back = applyIntent(buy, 'rent');
+    expect(back.filters.buying).toBe(false);
+    expect(back.weights.affordability).toBeGreaterThan(DEFAULT_WEIGHTS.affordability);
+  });
+
+  it('undoes the previous intent’s weights when switching', () => {
+    const nomad = applyIntent(quickBase(), 'nomad');
+    expect(nomad.weights.internet).toBe(9);
+    expect(nomad.filters.minNetMbps).toBe(50);
+    const live = applyIntent(nomad, 'live');
+    expect(live.weights.internet).toBe(DEFAULT_WEIGHTS.internet);
+    expect(live.filters.minNetMbps).toBe(DEFAULT_FILTERS.minNetMbps);
+  });
+
+  it('travel brings months, and nothing else keeps them', () => {
+    const t = applyIntent(quickBase(), 'travel');
+    expect(t.filters.months).toHaveLength(1);
+    expect(applyIntent(t, 'live').filters.months).toEqual([]);
+    const s = buildQuickSearch({ ...DEFAULT_QUICK, intent: 'travel', months: [9, 10] }, null);
+    expect(s.filters.months).toEqual([9, 10]);
+    expect(summaryChips(s, null, null).find((c) => c.key === 'months')?.label).toBe('Oct–Nov');
+  });
+
+  it('no intent lights a lifestyle tile the person did not pick', () => {
+    for (const i of ['live', 'nomad', 'rent', 'travel', 'retire', 'buy'] as const) {
+      const lit = activeVibes(applyIntent(quickBase(), i)).filter((v) => !(i === 'nomad' && v === 'remote'));
+      expect(lit).toEqual([]);
+    }
+  });
+
+  it('landscape tiles that contradict each other replace one another', () => {
+    let s = toggleVibe(quickBase(), 'mountains');
+    s = toggleVibe(s, 'flat');
+    expect(vibe('mountains').isOn(s)).toBe(false);
+    expect(vibe('flat').isOn(s)).toBe(true);
+  });
 });

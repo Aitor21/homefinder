@@ -83,7 +83,7 @@ export default function ResultCard({
         </ul>
       )}
       {children}
-      <Highlights town={t} max={3} />
+      <Highlights town={t} max={3} months={explain.months} />
     </li>
   );
 }

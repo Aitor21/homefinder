@@ -1,11 +1,11 @@
 import type { Filters, Ownership, Town, Weights } from '../types';
-import { POP_ANY, SAFETY_ANY } from '../types';
+import { DAYS_ANY, POP_ANY, SAFETY_ANY } from '../types';
 import { OWNERSHIP_LABEL } from '../types';
 import { explain, MIN_PICKS, type Affinity } from '../affinity';
 import { DEFAULT_FILTERS, DEFAULT_WEIGHTS } from '../types';
 import { rebaseCost } from '../home';
 import { deviceTimeZone } from '../clock';
-import type { Search } from '../quickstart';
+import { quickBase, type Search } from '../quickstart';
 import QuickControls from './QuickControls';
 
 interface Props {
@@ -137,7 +137,7 @@ export default function FilterPanel(p: Props) {
         </details>
       )}
 
-      <details className="group fold">
+      <details className="group fold" hidden={!f.buying}>
         <summary>Budget &amp; size, exactly</summary>
         <Slider
           name="Max budget"
@@ -192,16 +192,16 @@ export default function FilterPanel(p: Props) {
           name="Days over 30 °C at most"
           value={f.maxDaysOver30}
           min={0}
-          max={200}
-          fmt={days}
+          max={DAYS_ANY}
+          fmt={(v) => (v >= DAYS_ANY ? 'any' : days(v))}
           onChange={(v) => set({ maxDaysOver30: v })}
         />
         <Slider
           name="Nights over 20 °C at most"
           value={f.maxTropicalNights}
           min={0}
-          max={200}
-          fmt={days}
+          max={DAYS_ANY}
+          fmt={(v) => (v >= DAYS_ANY ? 'any' : days(v))}
           hint="The one that decides whether you sleep"
           onChange={(v) => set({ maxTropicalNights: v })}
         />
@@ -445,8 +445,8 @@ export default function FilterPanel(p: Props) {
         </summary>
         {(
           [
-            ['summerFit', 'Right kind of summer'],
-            ['affordability', 'Value for money'],
+            ['summerFit', f.months.length ? 'Right weather on your dates' : 'Right kind of summer'],
+            ['affordability', f.buying ? 'What the budget buys' : 'Low housing costs'],
             ['airport', 'Airport access'],
             ['city', 'City access'],
             ['amenities', 'Local services'],
@@ -465,6 +465,9 @@ export default function FilterPanel(p: Props) {
             ['safety', 'Low homicide rate'],
             ['culture', 'Museums, theatre & live music'],
             ['events', 'Festivals & big events nearby'],
+            ['water', 'Lakes & river beaches'],
+            ['altitude', 'Altitude'],
+            ['flat', 'Flat, open country'],
             ['affinity', 'Like my picks'],
           ] as Array<[keyof Weights, string]>
         ).map(([k, label]) => (
@@ -682,7 +685,7 @@ export default function FilterPanel(p: Props) {
         <button className="chipbtn" onClick={p.onOpenWizard}>
           Calibrate with places you know
         </button>
-        <button className="link" onClick={() => p.onFilters({ ...DEFAULT_FILTERS })}>
+        <button className="link" onClick={() => p.onFilters({ ...quickBase().filters, intent: f.intent, buying: f.buying, months: f.months, ownership: f.ownership })}>
           Reset all filters
         </button>
       </div>

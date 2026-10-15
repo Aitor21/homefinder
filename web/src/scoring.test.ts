@@ -18,6 +18,11 @@ import {
   priceFor,
   rejectReason,
   rank,
+  breakdown,
+  housingCostScore,
+  waterScore,
+  altitudeScore,
+  flatScore,
 } from './scoring';
 import { fitGems, discountPct } from './gems';
 import { slug, parseListingsCsv, portalLinks } from './listings';
@@ -507,5 +512,46 @@ describe('listings', () => {
     // Price is optional now, so the one column it cannot do without is the
     // one that ties a row to somewhere.
     expect(errors[0]).toMatch(/municipality/);
+  });
+});
+
+describe('living, not buying', () => {
+  it('applies the budget only when buying', () => {
+    const dear = town({ eurM2: 9000 });
+    expect(rejectReason(dear, DEFAULT_FILTERS)).toBe('over budget');
+    expect(rejectReason(dear, { ...DEFAULT_FILTERS, buying: false })).toBeNull();
+  });
+
+  it('ranks cheaper housing higher for a renter, whatever the budget', () => {
+    const f = { ...DEFAULT_FILTERS, buying: false };
+    const cheap = breakdown(town({ eurM2: 900 }), f, { refs: [] }).affordability;
+    const dear = breakdown(town({ eurM2: 3500 }), f, { refs: [] }).affordability;
+    expect(cheap).toBeGreaterThan(dear + 0.4);
+    expect(housingCostScore(town({ eurM2: 900 }))).toBe(cheap);
+  });
+
+  it('judges the weather on the months of a visit', () => {
+    // A place that is 32 °C at its peak but 20 °C in October.
+    const t = town({ hottestTmax: 32, monthlyTmax: [12, 13, 16, 18, 22, 28, 32, 31, 27, 20, 15, 12] });
+    expect(summerFit(t, 20)).toBeLessThan(0.1);
+    expect(summerFit(t, 20, [9])).toBe(1);
+    expect(rejectReason(t, { ...DEFAULT_FILTERS, buying: false, maxHotTmax: 25 })).toBe('hottest month too hot');
+    expect(rejectReason(t, { ...DEFAULT_FILTERS, buying: false, maxHotTmax: 25, months: [9] })).toBeNull();
+  });
+
+  it('reads rain for the months of a visit', () => {
+    const t = town({ annualRain: 1600, monthlyPrec: [200, 200, 150, 120, 80, 20, 10, 10, 60, 150, 200, 200] });
+    const year = breakdown(t, DEFAULT_FILTERS, { refs: [] }).drier;
+    const july = breakdown(t, { ...DEFAULT_FILTERS, months: [6] }, { refs: [] }).drier;
+    expect(july).toBeGreaterThan(year + 0.5);
+  });
+
+  it('scores landscape: lakes inland only, altitude, flat country', () => {
+    expect(waterScore(town({ coastKm: 2, beachKm: 1 }))).toBeNull();
+    expect(waterScore(town({ coastKm: 200, beachKm: 1 }))).toBe(1);
+    expect(waterScore(town({ coastKm: 200, beachKm: 40 }))).toBe(0);
+    expect(altitudeScore(town({ elev: 1500 }))).toBe(1);
+    expect(flatScore(town({ relief25km: 50 }))).toBe(1);
+    expect(flatScore(town({ relief25km: 1200 }))).toBe(0);
   });
 });

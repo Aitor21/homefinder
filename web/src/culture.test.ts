@@ -89,3 +89,11 @@ describe('culture', () => {
     expect(b.events).toBeGreaterThan(0);
   });
 });
+
+describe('events on a visit', () => {
+  it('counts festivals held during the visit far more than ones held at other times', () => {
+    // BBK Live is in July; Bilbao's other big draws are in August and September.
+    const t = bilbao();
+    expect(eventsScore(t, [6])).toBeGreaterThan(eventsScore(t, [1]) + 0.3);
+  });
+});
