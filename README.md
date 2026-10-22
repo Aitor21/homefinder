@@ -1198,4 +1198,4 @@ web/               Vite + React + TypeScript + Leaflet
 `npm test` covers the scoring model, the filters, near misses, clocks and
 daylight, the gem regression, the questionnaire, the quick start, culture and
 events, the reasons, areas, duplicate merging, intents and travel months, and
-the listing parsers: 198 tests, no I/O.
+the listing parsers: 197 tests, no I/O.
