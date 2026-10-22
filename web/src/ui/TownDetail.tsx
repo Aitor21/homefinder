@@ -33,6 +33,21 @@ import { onDuring } from '../culture';
  * than one more click. Wikivoyage's own search lands on the article when the
  * name matches one.
  */
+/**
+ * Where to read crime for the town itself, which the dataset does not have:
+ * the only crime figure comparable between countries is the national homicide
+ * rate. Spain publishes recorded crime for every municipality over 20,000
+ * people each quarter (Balance de Criminalidad), so a Spanish town gets a
+ * search aimed at that; elsewhere a plain search. Searches, not deep links,
+ * for the same reason as the rental links.
+ */
+function localCrime(t: Town): string {
+  const q = t.country === 'ES'
+    ? `Balance de Criminalidad ${t.name} Ministerio del Interior`
+    : `crime rate ${t.name} ${t.countryName}`;
+  return `https://www.google.com/search?q=${encodeURIComponent(q)}`;
+}
+
 function lookups(t: Town) {
   const q = (s: string) => encodeURIComponent(s);
   return {
@@ -705,7 +720,7 @@ export default function TownDetail({
               </span>
             )}
           </span>
-          <span className="k">Homicides per 100,000</span>
+          <span className="k">Homicides per 100,000, {t.countryName}</span>
           <span className="v">
             {t.homicideRate == null ? (
               'n/a'
@@ -715,6 +730,12 @@ export default function TownDetail({
                 <span className="subtle"> national, {t.homicideYear}</span>
               </span>
             )}
+          </span>
+          <span className="k">Crime in {t.name} itself</span>
+          <span className="v">
+            <a href={localCrime(t)} target="_blank" rel="noreferrer">
+              {t.country === 'ES' ? 'Interior Ministry figures →' : 'look it up →'}
+            </a>
           </span>
           <span className="k">Top income tax / VAT</span>
           <span className="v">

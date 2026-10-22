@@ -603,6 +603,22 @@ Three things decide daily life abroad that no climate normal captures:
 
 ## Safety
 
+**It rates countries, not towns, and the app now says so everywhere.** Every
+place in a country carries the same figure, so Barakaldo, Badalona and Getxo
+all read Spain's 0.7. It used to appear under a town's name as "Very safe
+country", which read as a verdict on that town. Now the dimension is called
+*Country safety*, the tile is *Low-crime country*, a reason reads "Low-crime
+country: Spain, 0.7 homicides per 100k nationally", and it ranks below any fact
+about the place itself. Within one country it cannot change the order at all;
+it only separates countries.
+
+Crime in the town itself is not in the dataset, because no measure of it is
+comparable across 101 countries. Each town panel links to where to read it.
+For a Spanish town that is the Interior Ministry's *Balance de Criminalidad*,
+which publishes recorded crime every quarter for each municipality of 20,000
+people or more. That series is the obvious next layer for Spain: it needs a
+pipeline stage run from a machine that can reach the Ministry's site.
+
 A national homicide rate per 100,000 people, UNODC figures via the World Bank.
 It is the one crime statistic comparable between countries, because a body is
 counted the same way everywhere, where theft and assault depend on what people
@@ -1182,4 +1198,4 @@ web/               Vite + React + TypeScript + Leaflet
 `npm test` covers the scoring model, the filters, near misses, clocks and
 daylight, the gem regression, the questionnaire, the quick start, culture and
 events, the reasons, areas, duplicate merging, intents and travel months, and
-the listing parsers: 195 tests, no I/O.
+the listing parsers: 197 tests, no I/O.

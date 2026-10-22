@@ -51,6 +51,7 @@ it('describes a rank as a share of the list', () => {
   expect(topShare(1, 500)).toBe('Top 1%');
   expect(topShare(20, 500)).toBe('Top 4%');
   expect(topShare(120, 500)).toBe('Top 25%');
+  expect(topShare(1, 1)).toBe('');
 });
 
 describe('areas', () => {
@@ -85,5 +86,26 @@ describe('duplicate places', () => {
       town({ id: 'US-2', name: 'Portland', lat: 43.66, lon: -70.26 }),
     ]);
     expect(far).toHaveLength(2);
+  });
+});
+
+describe('country-wide facts', () => {
+  it('words safety as the country’s national figure, never as the town’s', () => {
+    const r = rankedOf({ id: 'ES-BAR', name: 'Barakaldo', countryName: 'Spain', homicideRate: 0.7 });
+    const ctx: ExplainCtx = {
+      weights: { ...W, safety: 9 }, typical: { safety: 0.3 }, budget: 400_000, summerTarget: null,
+    };
+    const s = reasons(r, ctx, 5).find((x) => x.dim === 'safety');
+    expect(s?.text).toBe('Low-crime country: Spain, 0.7 homicides per 100k nationally');
+    expect(s?.text).not.toMatch(/very safe/i);
+  });
+
+  it('ranks a fact about the town itself above a country-wide one', () => {
+    const r = rankedOf({ id: 'ES-SEA', coastKm: 1, homicideRate: 0.7 });
+    const ctx: ExplainCtx = {
+      weights: { ...W, coast: 8, safety: 8 }, typical: { coast: 0.2, safety: 0.2 }, budget: 400_000, summerTarget: null,
+    };
+    const dims = reasons(r, ctx, 5).map((x) => x.dim);
+    expect(dims.indexOf('coast')).toBeLessThan(dims.indexOf('safety'));
   });
 });

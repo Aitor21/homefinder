@@ -462,7 +462,7 @@ export default function FilterPanel(p: Props) {
             ['nature', 'Protected nature nearby'],
             ['ski', 'Ski slopes nearby'],
             ['pets', 'Good for a dog'],
-            ['safety', 'Low homicide rate'],
+            ['safety', 'Country safety (national homicide rate)'],
             ['culture', 'Museums, theatre & live music'],
             ['events', 'Festivals & big events nearby'],
             ['water', 'Lakes & river beaches'],

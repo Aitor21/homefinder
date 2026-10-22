@@ -25,7 +25,7 @@ export const DIM_LABEL: Record<keyof Breakdown, string> = {
   nature: 'Protected nature',
   ski: 'Ski slopes',
   pets: 'Good for a dog',
-  safety: 'Safety',
+  safety: 'Country safety',
   culture: 'Museums & theatre',
   events: 'Festivals & events',
   water: 'Lakes & rivers',
