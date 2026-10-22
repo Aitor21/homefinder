@@ -397,7 +397,9 @@ export const VIBES: VibeOption[] = [
   weighted('fly', '✈️', 'Fly often', 'A big airport within an hour', ['airport'],
     { on: { maxHubMin: 60, maxAirportMin: 45 }, off: { maxHubMin: 150, maxAirportMin: 120 } }),
   weighted('dog', '🐕', 'Moving with a dog', 'Vets, walks, bearable summers', ['pets']),
-  weighted('safe', '🛡️', 'Very safe', 'Low national crime', ['safety']),
+  // National homicide rates only, so the tile says country. It used to say
+  // "Very safe", which promised something about towns the data cannot see.
+  weighted('safe', '🛡️', 'Low-crime country', 'National homicide rate: tells countries apart, not towns', ['safety']),
 ];
 
 export function vibe(key: Vibe): VibeOption {

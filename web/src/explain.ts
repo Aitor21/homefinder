@@ -133,8 +133,14 @@ export function fact(dim: keyof Breakdown, t: Town, c: ExplainCtx, good: boolean
       return t.skiKm == null ? null : `${r0(t.skiKm)} km to ski slopes`;
     case 'pets':
       return t.vetKm == null ? (good ? 'Good for a dog' : null) : good ? `Dog-friendly, vet ${r0(t.vetKm)} km` : `${r0(t.vetKm)} km to a vet`;
-    case 'safety':
-      return t.homicideRate == null ? null : good ? `Very safe country (${t.homicideRate.toFixed(1)} per 100k)` : `Higher crime country (${t.homicideRate.toFixed(1)} per 100k)`;
+    // A national figure, so it is worded as one. It used to read "Very safe
+    // country" under a town's name, which people took as a verdict on the
+    // town: Barakaldo and Badalona carried it purely for being in Spain.
+    case 'safety': {
+      if (t.homicideRate == null) return null;
+      const rate = `${t.homicideRate.toFixed(1)} homicides per 100k nationally`;
+      return good ? `Low-crime country: ${t.countryName}, ${rate}` : `Higher-crime country: ${t.countryName}, ${rate}`;
+    }
     case 'culture':
       if (venuesSurveyed(t)) return `${t.museum15km} museums, ${t.theatre15km} theatres within 15 km`;
       return good ? 'Big-city culture within reach' : 'Little culture nearby';
@@ -163,6 +169,14 @@ export function fact(dim: keyof Breakdown, t: Town, c: ExplainCtx, good: boolean
   }
 }
 
+/**
+ * Measured per country, not per place, AND easy to misread as a verdict on
+ * the town. Living costs are national too, but "everyday costs 30% below
+ * home" already says what it is and is among the most useful things to know,
+ * so only safety is held back.
+ */
+const COUNTRY_WIDE: ReadonlySet<keyof Breakdown> = new Set(['safety']);
+
 /** Below this weight a dimension is a nudge, not a stated preference. */
 const MIN_WEIGHT = 2;
 
@@ -180,13 +194,16 @@ export function reasons(r: Ranked, c: ExplainCtx, max = 3, maxOff = 2): Reason[]
     if (v == null || w < MIN_WEIGHT) continue;
     const ref = c.typical[k] ?? 0.5;
     const edge = v - ref;
-    if (v >= 0.6 && edge > 0.08) pros.push({ dim: k, score: w * edge + w * 0.05 * v });
+    // Country-wide facts rank below facts about the place itself: every town
+    // in the country shares them, so they are context, not why this town.
+    const own = COUNTRY_WIDE.has(k) ? 0.4 : 1;
+    if (v >= 0.6 && edge > 0.08) pros.push({ dim: k, score: own * (w * edge + w * 0.05 * v) });
     // A trade-off is only worth naming on something you actually care about:
     // raised above its default, or weighted heavily anyway. Mountains carry a
     // small default weight, and "flat surroundings" on every seaside card was
     // noise to someone who never asked for mountains.
     else if ((v < 0.35 || edge < -0.25) && (w > (DEFAULT_WEIGHTS[k] ?? 0) || w >= 6)) {
-      cons.push({ dim: k, score: w * Math.max(-edge, 0.35 - v) });
+      cons.push({ dim: k, score: own * w * Math.max(-edge, 0.35 - v) });
     }
   }
   // Nothing stands out from a list of similar places: then say what is
@@ -220,7 +237,9 @@ export function reasons(r: Ranked, c: ExplainCtx, max = 3, maxOff = 2): Reason[]
 
 /** "Top 1%", "Top 15%": where a rank sits in the list, for a score that cannot say it. */
 export function topShare(rank: number, total: number): string {
-  if (total <= 0) return '';
+  // A share of a handful says nothing: a search that finds one town is not
+  // "Top 100%" of anything.
+  if (total < 20) return '';
   const pct = (rank / total) * 100;
   if (pct <= 1) return 'Top 1%';
   if (pct <= 5) return `Top ${Math.ceil(pct)}%`;
